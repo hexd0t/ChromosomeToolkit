@@ -6,7 +6,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     UnknownVersion(String),
     IoError(std::io::Error),
-    EnumUnparseable(String),
+    EnumUnparsable(String),
     InvalidStructure(String),
     InvalidString(String),
 }
@@ -26,6 +26,6 @@ impl From<std::io::Error> for Error {
 
 impl<E: num_enum::TryFromPrimitive> From<num_enum::TryFromPrimitiveError<E>> for Error {
     fn from(value: num_enum::TryFromPrimitiveError<E>) -> Self {
-        Self::EnumUnparseable(format!("{}", value))
+        Self::EnumUnparsable(format!("{}", value))
     }
 }

@@ -104,7 +104,7 @@ impl SndFileProps {
         write_u32(&mut w, data_size as u32).unwrap();
         // data version:
         write_u16(&mut w, 0xC9).unwrap();
-        // property cound:
+        // property count:
         write_u32(&mut w, contents.len() as u32).unwrap();
         for content in contents {
             w.write_all(&content).unwrap();
@@ -115,13 +115,13 @@ impl SndFileProps {
         w.into_inner()
     }
 
-    fn write_prop(name: &str, ptype: &str, data: &[u8]) -> Vec<u8> {
-        let size = 2 + 2 + 2 + 4 + name.len() + ptype.len() + data.len();
+    fn write_prop(name: &str, p_type: &str, data: &[u8]) -> Vec<u8> {
+        let size = 2 + 2 + 2 + 4 + name.len() + p_type.len() + data.len();
         let mut w = Cursor::new(Vec::with_capacity(size));
         write_u16(&mut w, name.len() as u16).unwrap();
         w.write_all(name.as_bytes()).unwrap();
-        write_u16(&mut w, ptype.len() as u16).unwrap();
-        w.write_all(ptype.as_bytes()).unwrap();
+        write_u16(&mut w, p_type.len() as u16).unwrap();
+        w.write_all(p_type.as_bytes()).unwrap();
         write_u16(&mut w, 0x1E).unwrap();
         write_u32(&mut w, data.len() as u32).unwrap();
         w.write_all(data).unwrap();

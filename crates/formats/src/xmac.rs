@@ -1,9 +1,12 @@
 //! Resources on the XMAC format:
-//!  - O3DE (fomerly Amazon Lumberyard) has an importer for XMAC, although a newer version
+//!  - O3DE (formerly Amazon Lumberyard) has an importer for XMAC, although a newer version
 //!    at https://github.com/o3de/o3de/tree/development/Gems/EMotionFX/Code/EMotionFX/Source
 //!    older commits contain more 'legacy' RemoteFX code
 //!    (since Amazon bought EmotionFX & employs their devs, this can be considered 'ground truth')
 //!    License: Apache 2 or MIT
+//!  - Lumberyard's archived repo has more old pieces of RemoteFX left:
+//!    at github.com/aws/lumberyard/blob/master/dev/Gems/EMotionFX/Code/EMotionFX/Source/Importer/ActorFileFormat.h
+//!    License: AWS Agreement
 //!  - RisenEditor:
 //!    at https://github.com/hhergeth/RisenEditor
 //!    License: none
@@ -52,7 +55,7 @@ pub struct XmacInfo {
     // TODO: The version used by R1 carries only one of these:
     /// the node number of the trajectory node used for motion extraction
     motion_extraction_node_index: i32,
-    /// the retargeting root node index, most likely pointing to the hip or pelvis or MCORE_INVALIDINDEX32 when not set
+    /// the retargeting root node index, most likely pointing to the hip or pelvis or invalid index (.1) when not set
     //retarget_root_node_index: i32,
     /// supposedly contains unit_type (feet, cm, m, ...) and exporter version, but none of those are used
     unknown1: u32,
@@ -116,26 +119,50 @@ pub struct XmacMaterial {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct XmacMap {
     texture: String,
-    map_type: XmacMapType,
+    map_type: XmacLayerType,
     unknown3: [f32; 6],
     unknown4: u16,
     unknown5: u8,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub enum XmacMapType {
-    Diffuse,
-    Specular,
-    Normal,
+#[repr(u8)]
+#[derive(Debug, Deserialize, Serialize, IntoPrimitive, TryFromPrimitive, Clone, Copy)]
+pub enum XmacLayerType {
+    Unknown = 0,
+    Ambient = 1,
+    Diffuse = 2,
+    Specular = 3,
+    Opacity = 4,
+    /// Contains a normal-map
+    Bump = 5,
+    SelfIllumination = 6,
+    /// shininess (for specular)
+    Shine = 7,
+    /// shine strength (for specular)
+    ShineStrength = 8,
+    FilterColor = 9,
+    Reflect = 10,
+    Refract = 11,
+    Environment = 12,
+    Displacement = 13,
 }
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct XmacMesh {}
 
 #[repr(u32)]
 #[derive(Debug, Deserialize, Serialize, IntoPrimitive, TryFromPrimitive, Clone, Copy)]
 
 pub enum XmacChunkType {
     Node = 0,
+    Mesh = 1,
+    SkinningInfo = 2,
+    StdMaterial = 3,
+    StdMaterialLayer = 4,
+    FxMaterial = 5,
     Limit = 6,
     Info = 7,
+    MeshLodLevels = 8,
     StdProgMorphTarget = 9,
     NodeGroups = 10,
     Nodes = 11,
@@ -143,9 +170,11 @@ pub enum XmacChunkType {
     /// Chunk 13 is originally just MaterialsCount,
     /// with Chunk 3 containing the Materials -
     /// but it's Chunk size is broken and it's easier to handle both at once
-    Materials = 13,
+    MaterialInfo = 13,
     NodeMotionSources = 14,
     AttachmentNodes = 15,
+    MaterialAttributeSet = 16,
+    GenericMaterial = 17,
     PhysicsSetup = 18,
     SimulatedObjectSetup = 19,
     MeshAsset = 20,
@@ -288,7 +317,7 @@ impl XmacChunk {
                             )
                         })
                 }
-                XmacChunkType::Materials => {
+                XmacChunkType::MaterialInfo => {
                     XmacMaterials::load(src, big_endian, multiply_order, chunk_size, chunk_version)?
                         .map(XmacChunk::Materials)
                         .unwrap_or_else(|| {
@@ -422,7 +451,7 @@ impl XmacNodes {
                     let child_count = read_u32_endian(src, big_endian)?;
 
                     let flags = read_u8(src)?;
-                    let flags = XmacNodeFlags::from_bits(flags).ok_or(Error::EnumUnparseable(
+                    let flags = XmacNodeFlags::from_bits(flags).ok_or(Error::EnumUnparsable(
                         format!("Parsing XmacNodeFlags failed, invalid value {flags:02x}"),
                     ))?;
 
@@ -483,17 +512,18 @@ impl XmacMaterials {
         println!("Loading MATERIALS chunk...");
         match chunk_version {
             1 => {
-                let material_count = read_u32_endian(src, big_endian)? as usize;
-                let root_count = read_u32_endian(src, big_endian)? as usize;
-                if material_count != root_count {
+                let total_materials = read_u32_endian(src, big_endian)? as usize;
+                let standard_materials = read_u32_endian(src, big_endian)? as usize;
+
+                if total_materials != standard_materials {
                     return Err(Error::InvalidStructure(format!(
                         "Cascaded Materials are not supported"
                     )));
                 }
                 let materials_chunk_id = read_u32_endian(src, big_endian)?;
                 assert_eq!(materials_chunk_id, 3);
-                let mut materials = Vec::with_capacity(material_count);
-                for _idx in 0..material_count {
+                let mut materials = Vec::with_capacity(total_materials);
+                for _idx in 0..total_materials {
                     let mut unknown2 = [0u8; 95];
                     src.read_exact(&mut unknown2)?;
                     let map_count = read_u8(src)? as usize;
@@ -506,16 +536,7 @@ impl XmacMaterials {
                         }
                         let unknown4 = read_u16_endian(src, big_endian)?;
 
-                        let map_type = match read_u8(src)? {
-                            2 => XmacMapType::Diffuse,
-                            3 => XmacMapType::Specular,
-                            5 => XmacMapType::Normal,
-                            type_id => {
-                                return Err(Error::EnumUnparseable(format!(
-                                    "Unknown XmacMapType: {type_id}"
-                                )))
-                            }
-                        };
+                        let map_type = XmacLayerType::try_from(read_u8(src)?)?;
                         let unknown5 = read_u8(src)?;
 
                         let texture = read_xmac_str(src, big_endian)?;
@@ -551,6 +572,23 @@ impl XmacMaterials {
     }
 }
 
+impl XmacMesh {
+    fn load<R: ArchiveReadTarget>(
+        src: &mut R,
+        big_endian: bool,
+        multiply_order: bool,
+        chunk_size: u32,
+        chunk_version: u32,
+    ) -> Result<Option<Self>> {
+        let node_count = read_u32_endian(src, big_endian)?;
+        let base_verts_count = read_u32_endian(src, big_endian)?;
+        let vertices_count = read_u32_endian(src, big_endian)?;
+        let indices_count = read_u32_endian(src, big_endian)?;
+
+        Ok(Some(Self {}))
+    }
+}
+
 /// XMAC Strings store their length in (endianness-affected) u32
 fn read_xmac_str<R: ArchiveReadTarget>(src: &mut R, big_endian: bool) -> Result<String> {
     let len = read_u32_endian(src, big_endian)? as usize;
@@ -563,7 +601,7 @@ fn read_xmac_str<R: ArchiveReadTarget>(src: &mut R, big_endian: bool) -> Result<
     let mut str_buf = vec![0; len];
     src.read_exact(&mut str_buf)?;
 
-    // TODO: Check if xmacs contain UTF8?
+    // TODO: Check if Xmac files contain UTF8?
     if let Some(string) =
         encoding_rs::WINDOWS_1252.decode_without_bom_handling_and_without_replacement(&str_buf)
     {
