@@ -1,0 +1,17 @@
+# Print caller of current function:
+
+let mut bt = backtrace::Backtrace::new();
+bt.resolve();
+println!(
+    "{:?}",
+    &bt.frames()[5..7]
+        .iter()
+        .map(|f| &f.symbols()[0])
+        .map(|s| format!(
+            "{} @ {}:{}",
+            s.name().unwrap(),
+            s.filename().unwrap().file_name().unwrap().to_str().unwrap(),
+            s.lineno().unwrap()
+        ))
+        .collect::<Vec<_>>()
+);

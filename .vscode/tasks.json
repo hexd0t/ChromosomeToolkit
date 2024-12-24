@@ -1,0 +1,35 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "cargo",
+			"command": "build", 
+			"args": ["--bin", "lrent_to_json"],
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "build lrent_to_json"
+		},
+		{
+			"type": "cargo",
+			"command": "build", 
+			"args": ["--bin", "json_to_lrent"],
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "build json_to_lrent"
+		},
+		{
+			"type": "cargo",
+			"command": "build", 
+			"args": ["--bin", "tple_to_json"],
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "build tple_to_json"
+		},
+	]
+}

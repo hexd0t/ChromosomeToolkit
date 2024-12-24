@@ -1,0 +1,50 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch json_to_lrent",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceRoot}/target/debug/json_to_lrent.exe",
+            "symbolSearchPath": "${workspaceRoot}/target/debug",
+            "args": [
+                "D:\\SteamLibrary\\steamapps\\common\\Risen\\data\\common\\projects\\World\\Outdoor\\Game_Start\\Game_Start_NPC_01.lrent.json"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceRoot}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "preLaunchTask": "build json_to_lrent"
+        },
+        {
+            "name": "Launch lrent_to_json",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceRoot}/target/debug/lrent_to_json.exe",
+            "symbolSearchPath": "${workspaceRoot}/target/debug",
+            "args": [
+                "D:\\SteamLibrary\\steamapps\\common\\Risen\\data\\common\\projects\\World\\Outdoor\\Game_Start\\Game_Start_NPC_01.lrent"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceRoot}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "preLaunchTask": "build lrent_to_json"
+        },
+        {
+            "name": "Launch tple_to_json",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceRoot}/target/debug/tple_to_json.exe",
+            "symbolSearchPath": "${workspaceRoot}/target/debug",
+            "args": [
+                "D:\\SteamLibrary\\steamapps\\common\\Risen\\data\\common\\templates\\Items\\Armor\\It_Armor_player.tple"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceRoot}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "preLaunchTask": "build tple_to_json"
+        }
+    ]
+}

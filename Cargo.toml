@@ -1,0 +1,19 @@
+[workspace]
+members = [
+    "crates/formats",
+    "crates/bins/mp3_to_xsnd",
+    "crates/bins/lrent_to_json",
+    "crates/bins/json_to_lrent",
+    "crates/bins/tple_to_json",
+    "crates/bins/json_to_tple",
+    "crates/bins/xmac_to_usd",
+]
+resolver = "2"
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[profile.release]
+strip = true
+opt-level = "z"
+codegen-units = 1
+panic = "abort"

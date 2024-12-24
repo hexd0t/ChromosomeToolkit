@@ -1,0 +1,8 @@
+[package]
+name = "mp3_to_xsnd"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+formats = { path = "../../formats" }
+symphonia = { version = "0.5.4", default-features = false, features = ["mp3"] }
