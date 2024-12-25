@@ -362,7 +362,7 @@ impl Vector2 {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Vector3 {
     pub x: f32,
     pub y: f32,

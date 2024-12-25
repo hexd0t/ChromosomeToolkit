@@ -1,0 +1,272 @@
+use num_enum::IntoPrimitive;
+use num_enum::TryFromPrimitive;
+use serde::{Deserialize, Serialize};
+
+use super::nodes::XmacNodeId;
+use super::XmacChunkMeta;
+
+use crate::archive::ArchiveReadTarget;
+use crate::error::*;
+use crate::helpers::*;
+use crate::types::Vector2;
+use crate::types::Vector3;
+use crate::types::Vector4;
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct XmacMesh {
+    pub vertex_attribute_layers: Vec<XmacMeshAttribLayer>,
+    pub submeshes: Vec<XmacMeshSubmesh>,
+
+    pub node_id: XmacNodeId,
+    pub orig_verts_count: u32,
+    pub unknown: u32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct XmacMeshAttribLayer {
+    pub attribs: XmacMeshAttrib,
+    pub unknown1: u32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum XmacMeshAttrib {
+    Positions(Vec<Vector3>),
+    Normals(Vec<Vector3>),
+    Tangents(Vec<Vector4>),
+    UvCoords(Vec<Vector2>),
+    /// Contains a 4-byte RGBA value
+    Colors32(Vec<u32>),
+    OriginalVertexNumbers(Vec<u32>),
+    /// Contains 4 f32 color entries (RGBA)
+    Colors128(Vec<Vector4>),
+    BiTangents(Vec<Vector3>),
+    ClothData(Vec<u32>),
+}
+
+#[repr(u32)]
+#[derive(Debug, Deserialize, Serialize, IntoPrimitive, TryFromPrimitive, Clone, Copy)]
+pub enum XmacMeshAttribLayerType {
+    /// Contains a Vector3
+    Positions = 0,
+    /// Contains a Vector3
+    Normals = 1,
+    /// Contains a Vector4
+    Tangents = 2,
+    /// Contains a Vector2
+    UvCoords = 3,
+    /// Contains a 4-byte RGBA value
+    Colors32 = 4,
+    /// Contains a u32
+    OriginalVertexNumbers = 5,
+    /// Contains 4 f32 color entries (RGBA)
+    Colors128 = 6,
+    /// Contains a Vector3
+    BiTangents = 7,
+    /// Contains a u32
+    ClothData = 8,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct XmacMeshSubmesh {
+    pub indices: Vec<u32>,
+    pub bones: Vec<u32>,
+
+    pub vertices_count: u32,
+    pub material_idx: u32,
+}
+
+impl XmacMesh {
+    pub fn load<R: ArchiveReadTarget>(
+        src: &mut R,
+        big_endian: bool,
+        multiply_order: bool,
+        chunk_meta: &XmacChunkMeta,
+    ) -> Result<Option<Self>> {
+        println!("Loading MESH chunk...");
+        match chunk_meta.version {
+            1 => {
+                let node_id = XmacNodeId(read_u32_endian(src, big_endian)?);
+                let orig_verts_count = read_u32_endian(src, big_endian)?;
+                let total_vertices_count = read_u32_endian(src, big_endian)?;
+                let _total_indices_count = read_u32_endian(src, big_endian)?;
+
+                let submesh_count = read_u32_endian(src, big_endian)?;
+                let layer_count = read_u32_endian(src, big_endian)?;
+                // let is_collision_mesh = read_bool(src)?;
+                // let is_triangle_mesh = read_bool(src)?;
+                let unknown = read_u32_endian(src, big_endian)?;
+
+                let mut layers = Vec::with_capacity(layer_count as usize);
+                for _layer_idx in 0..layer_count {
+                    layers.push(XmacMeshAttribLayer::load(
+                        src,
+                        big_endian,
+                        multiply_order,
+                        total_vertices_count,
+                    )?);
+                }
+
+                let mut submeshes = Vec::with_capacity(submesh_count as usize);
+                for _mesh_idx in 0..submesh_count {
+                    submeshes.push(XmacMeshSubmesh::load(src, big_endian)?);
+                }
+
+                Ok(Some(Self {
+                    vertex_attribute_layers: layers,
+                    submeshes,
+                    node_id,
+                    orig_verts_count,
+                    unknown,
+                }))
+            }
+
+            ver => {
+                println!(
+                    "Unknown XMAC mesh version {ver}@{:x}, skipping",
+                    src.stream_position()?
+                );
+                Ok(None)
+            }
+        }
+    }
+}
+
+impl XmacMeshAttribLayer {
+    pub fn load<R: ArchiveReadTarget>(
+        src: &mut R,
+        big_endian: bool,
+        _multiply_order: bool,
+        vertices_count: u32,
+    ) -> Result<Self> {
+        let layer_type = read_u32_endian(src, big_endian)?;
+        let layer_type = XmacMeshAttribLayerType::try_from(layer_type)?;
+        let attrib_size = read_u32_endian(src, big_endian)?;
+        let expected_attrib_size = match &layer_type {
+            XmacMeshAttribLayerType::Positions => 3 * 4,
+            XmacMeshAttribLayerType::Normals => 3 * 4,
+            XmacMeshAttribLayerType::Tangents => 4 * 4,
+            XmacMeshAttribLayerType::UvCoords => 2 * 4,
+            XmacMeshAttribLayerType::Colors32 => 4,
+            XmacMeshAttribLayerType::OriginalVertexNumbers => 4,
+            XmacMeshAttribLayerType::Colors128 => 4 * 4,
+            XmacMeshAttribLayerType::BiTangents => 3 * 4,
+            XmacMeshAttribLayerType::ClothData => 4,
+        };
+        if attrib_size != expected_attrib_size {
+            return Err(Error::InvalidStructure(format!("Attribute size mismatch - {layer_type:?} should have {expected_attrib_size}, found {attrib_size}!")));
+        }
+        let unknown1 = read_u32_endian(src, big_endian)?;
+
+        let attribs = match &layer_type {
+            XmacMeshAttribLayerType::Positions => XmacMeshAttrib::Positions(
+                XmacMeshAttrib::load_vector3(src, big_endian, vertices_count)?,
+            ),
+            XmacMeshAttribLayerType::Normals => XmacMeshAttrib::Normals(
+                XmacMeshAttrib::load_vector3(src, big_endian, vertices_count)?,
+            ),
+            XmacMeshAttribLayerType::Tangents => XmacMeshAttrib::Tangents(
+                XmacMeshAttrib::load_vector4(src, big_endian, vertices_count)?,
+            ),
+            XmacMeshAttribLayerType::UvCoords => XmacMeshAttrib::UvCoords(
+                XmacMeshAttrib::load_vector2(src, big_endian, vertices_count)?,
+            ),
+            XmacMeshAttribLayerType::Colors32 => {
+                XmacMeshAttrib::Colors32(XmacMeshAttrib::load_u32(src, big_endian, vertices_count)?)
+            }
+            XmacMeshAttribLayerType::OriginalVertexNumbers => {
+                XmacMeshAttrib::OriginalVertexNumbers(XmacMeshAttrib::load_u32(
+                    src,
+                    big_endian,
+                    vertices_count,
+                )?)
+            }
+            XmacMeshAttribLayerType::Colors128 => XmacMeshAttrib::Colors128(
+                XmacMeshAttrib::load_vector4(src, big_endian, vertices_count)?,
+            ),
+            XmacMeshAttribLayerType::BiTangents => XmacMeshAttrib::BiTangents(
+                XmacMeshAttrib::load_vector3(src, big_endian, vertices_count)?,
+            ),
+            XmacMeshAttribLayerType::ClothData => XmacMeshAttrib::ClothData(
+                XmacMeshAttrib::load_u32(src, big_endian, vertices_count)?,
+            ),
+        };
+
+        Ok(Self { attribs, unknown1 })
+    }
+}
+
+impl XmacMeshAttrib {
+    pub fn load_vector2<R: ArchiveReadTarget>(
+        src: &mut R,
+        big_endian: bool,
+        vertices_count: u32,
+    ) -> Result<Vec<Vector2>> {
+        let mut attribs = Vec::with_capacity(vertices_count as usize);
+
+        for _ver_idx in 0..vertices_count {
+            attribs.push(Vector2::load_endian(src, big_endian)?);
+        }
+        Ok(attribs)
+    }
+    pub fn load_vector3<R: ArchiveReadTarget>(
+        src: &mut R,
+        big_endian: bool,
+        vertices_count: u32,
+    ) -> Result<Vec<Vector3>> {
+        let mut attribs = Vec::with_capacity(vertices_count as usize);
+
+        for _ver_idx in 0..vertices_count {
+            attribs.push(Vector3::load_endian(src, big_endian)?);
+        }
+        Ok(attribs)
+    }
+    pub fn load_vector4<R: ArchiveReadTarget>(
+        src: &mut R,
+        big_endian: bool,
+        vertices_count: u32,
+    ) -> Result<Vec<Vector4>> {
+        let mut attribs = Vec::with_capacity(vertices_count as usize);
+
+        for _ver_idx in 0..vertices_count {
+            attribs.push(Vector4::load_endian(src, big_endian)?);
+        }
+        Ok(attribs)
+    }
+    pub fn load_u32<R: ArchiveReadTarget>(
+        src: &mut R,
+        big_endian: bool,
+        vertices_count: u32,
+    ) -> Result<Vec<u32>> {
+        let mut attribs = Vec::with_capacity(vertices_count as usize);
+
+        for _ver_idx in 0..vertices_count {
+            attribs.push(read_u32_endian(src, big_endian)?);
+        }
+        Ok(attribs)
+    }
+}
+
+impl XmacMeshSubmesh {
+    pub fn load<R: ArchiveReadTarget>(src: &mut R, big_endian: bool) -> Result<Self> {
+        let indices_count = read_u32_endian(src, big_endian)?;
+        let vertices_count = read_u32_endian(src, big_endian)?;
+        let material_idx = read_u32_endian(src, big_endian)?;
+        let bones_count = read_u32_endian(src, big_endian)?;
+
+        let mut indices = Vec::with_capacity(indices_count as usize);
+        for _idx in 0..indices_count {
+            indices.push(read_u32_endian(src, big_endian)?);
+        }
+        let mut bones = Vec::with_capacity(bones_count as usize);
+        for _idx in 0..bones_count {
+            bones.push(read_u32_endian(src, big_endian)?);
+        }
+        Ok(Self {
+            indices,
+            bones,
+            vertices_count,
+            material_idx,
+        })
+    }
+}

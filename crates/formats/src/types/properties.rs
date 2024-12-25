@@ -1132,9 +1132,9 @@ pub enum PropData {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct PropBuffer {
     #[serde(rename = "type")]
-    pub(crate) ty: String,
+    pub ty: String,
     #[serde(with = "crate::helpers::ser_hex")]
-    pub(crate) data: Vec<u8>,
+    pub data: Vec<u8>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
