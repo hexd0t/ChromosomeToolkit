@@ -27,47 +27,54 @@ use crate::{
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct XmacFile {
-    timestamp: DateTime,
-    props: Vec<Property>,
-    chunks: Vec<XmacChunk>,
+    pub timestamp: DateTime,
+    pub props: Vec<Property>,
+    pub chunks: Vec<XmacChunk>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum XmacChunk {
     Info(XmacInfo),
     Nodes(XmacNodes),
-    Materials(XmacMaterials),
+    MaterialInfo(XmacMaterialInfo),
+    StdMaterial(XmacStdMaterial),
     Unknown(XmacUnknownChunk),
+}
+
+struct XmacChunkMeta {
+    type_id: u32,
+    size: u32,
+    version: u32,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct XmacUnknownChunk {
-    type_id: u32,
-    version: u32,
+    pub type_id: u32,
+    pub version: u32,
     #[serde(with = "crate::helpers::ser_hex")]
-    data: Vec<u8>,
+    pub data: Vec<u8>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct XmacInfo {
-    /// the number of level of details
-    lod_count: u32,
+    /// the number of level of details - R1 doesn't seem to have LOD fields though
+    // pub lod_count: u32,
     // TODO: The version used by R1 carries only one of these:
     /// the node number of the trajectory node used for motion extraction
-    motion_extraction_node_index: i32,
+    pub motion_extraction_node_index: i32,
     /// the retargeting root node index, most likely pointing to the hip or pelvis or invalid index (.1) when not set
-    //retarget_root_node_index: i32,
+    pub retarget_root_node_index: i32,
     /// supposedly contains unit_type (feet, cm, m, ...) and exporter version, but none of those are used
-    unknown1: u32,
-    unknown2: u32,
+    pub unknown1: u32,
+    pub unknown2: u32,
     /// source application (e.g. "3ds Max 2011", "Maya 2011")
-    source_application: String,
+    pub source_application: String,
     /// original filename of the 3dsMax/Maya file
-    orig_filename: String,
+    pub orig_filename: String,
     /// compilation date of the exporter
-    exporter_date: String,
+    pub exporter_date: String,
     /// the name of the actor
-    actor_name: String,
+    pub actor_name: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -105,24 +112,95 @@ bitflags! {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct XmacMaterials {
-    materials: Vec<XmacMaterial>,
+pub struct XmacMaterialInfo {
+    std_materials: usize,
+    /// might also be generic materials instead
+    fx_materials: usize,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct XmacMaterial {
+pub struct XmacStdMaterial {
     name: String,
-    maps: Vec<XmacMap>,
-    unknown2: Vec<u8>,
+    layers: Vec<XmacStandardMaterialLayer>,
+
+    ambient_color: Vector4,
+    diffuse_color: Vector4,
+    specular_color: Vector4,
+    emissive_color: Vector4,
+    shine: f32,
+    shine_strength: f32,
+    opacity: f32,
+    refraction_index: f32,
+    double_sided: bool,
+    wireframe: bool,
+    transparency_type: XmacMaterialTransparencyType,
+}
+
+#[repr(u8)]
+#[derive(Debug, Deserialize, Serialize, IntoPrimitive, TryFromPrimitive, Clone, Copy)]
+pub enum XmacMaterialTransparencyType {
+    Filter = b'F',
+    Subtractive = b'S',
+    Additive = b'A',
+    Unknown = b'U',
+}
+
+#[repr(u8)]
+#[derive(Debug, Deserialize, Serialize, IntoPrimitive, TryFromPrimitive, Clone, Copy)]
+pub enum XmacLayerBlendMode {
+    /// The foreground texture covers up the background texture entirely.
+    NONE = 0,
+    /// The foreground texture is applied like a decal to the background.
+    /// The shape of the decal is determined by the foreground alpha.
+    OVER = 1,
+    /// The result is the background texture cut in the shape of the foreground alpha.
+    IN = 2,
+    /// The result is the opposite of In.
+    /// It is as if the shape of the foreground alpha has been cut out of the background.
+    OUT = 3,
+    /// The result color is the foreground color added to the background color as if being projected on the background through a slide projector.
+    /// The result color is then applied over the background color using the foreground alpha to define the opacity of the result.
+    ADD = 4,
+    /// The result color is the foreground color subtracted from the background color.
+    /// The result color is then applied over the background color using the foreground alpha to define the opacity of the result.
+    SUBTRACT = 5,
+    /// The result color is the foreground color multiplied by the background color.
+    /// The result color is then applied over the background color using the foreground alpha to define the opacity of the result.
+    MULTIPLY = 6,
+    /// The result color is the difference between the foreground color and the background color.
+    /// The result color is then applied over the background color using the foreground alpha to define the opacity of the result.
+    DIFFERENCE = 7,
+    /// The result color of each pixel is the background color or foreground color, whichever is lighter.
+    /// The result color is then applied over the background color using the foreground alpha to define the opacity of the result.
+    LIGHTEN = 8,
+    /// The result color of each pixel is the background color or foreground color, whichever is darker.
+    /// The result color is then applied over the background color using the foreground alpha to define the opacity of the result.
+    DARKEN = 9,
+    /// The result color is the background color with saturation increased in proportion to the foreground color scaled by foreground alpha.
+    /// If the foreground color is red, for example, the result color will be the background color with more saturated reds.
+    SATURATE = 10,
+    /// The result color is the background color with saturation decreased in proportion to the foreground color scaled by foreground alpha.
+    /// If the foreground color is red, for example, the result color will be the background color with desaturated reds.
+    DESATURATE = 11,
+    /// The result color is the background color mixed with the foreground color, brighter where the foreground is bright and darker where the foreground is dark.
+    /// It is as if the foreground texture represents the light falling on the background.
+    /// The result color is then applied over the background color using the foreground alpha to define the opacity of the result.
+    ILLUMINATE = 12,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct XmacMap {
+pub struct XmacStandardMaterialLayer {
     texture: String,
+
+    amount: f32,
+    u_offset: f32,
+    v_offset: f32,
+    u_tiling: f32,
+    v_tiling: f32,
+    rotation_rads: f32,
+    material_id: u16,
     map_type: XmacLayerType,
-    unknown3: [f32; 6],
-    unknown4: u16,
-    unknown5: u8,
+    blend_mode: XmacLayerBlendMode,
 }
 
 #[repr(u8)]
@@ -157,6 +235,8 @@ pub enum XmacChunkType {
     Node = 0,
     Mesh = 1,
     SkinningInfo = 2,
+    /// This is Chunk should be repeated for each Material,
+    /// but R1 just puts all Materials into one (whose chunk size is also wrong...)
     StdMaterial = 3,
     StdMaterialLayer = 4,
     FxMaterial = 5,
@@ -167,9 +247,6 @@ pub enum XmacChunkType {
     NodeGroups = 10,
     Nodes = 11,
     StdPMorphTargets = 12,
-    /// Chunk 13 is originally just MaterialsCount,
-    /// with Chunk 3 containing the Materials -
-    /// but it's Chunk size is broken and it's easier to handle both at once
     MaterialInfo = 13,
     NodeMotionSources = 14,
     AttachmentNodes = 15,
@@ -267,7 +344,8 @@ impl XmacFile {
 
         let mut chunks = Vec::new();
         while src.stream_position()? < xmac_finish {
-            chunks.push(XmacChunk::load(src, big_endian, multiply_order)?);
+            let new_chunk = XmacChunk::load(src, big_endian, multiply_order, &chunks)?;
+            chunks.push(new_chunk);
         }
 
         Ok(chunks)
@@ -279,109 +357,114 @@ impl XmacChunk {
         src: &mut R,
         big_endian: bool,
         multiply_order: bool,
+        _prev_chunks: &[XmacChunk],
     ) -> Result<Self> {
-        let chunk_type_id = read_u32_endian(src, big_endian)?;
-        let chunk_size = read_u32_endian(src, big_endian)?;
-        let chunk_version = read_u32_endian(src, big_endian)?;
+        let chunk_meta = XmacChunkMeta::load(src, big_endian)?;
         let chunk_start = src.stream_position()?;
-        let chunk_end = chunk_start + chunk_size as u64;
-        let result = if let Ok(chunk_type) = chunk_type_id.try_into() {
+        let chunk_end = chunk_start + chunk_meta.size as u64;
+        let result = if let Ok(chunk_type) = chunk_meta.type_id.try_into() {
             match chunk_type {
-                XmacChunkType::Info => {
-                    XmacInfo::load(src, big_endian, multiply_order, chunk_size, chunk_version)?
-                        .map(XmacChunk::Info)
-                        .unwrap_or_else(|| {
-                            XmacChunk::Unknown(
-                                XmacUnknownChunk::load(
-                                    src,
-                                    chunk_type_id,
-                                    chunk_size,
-                                    chunk_version,
-                                )
-                                .unwrap(),
-                            )
-                        })
-                }
-                XmacChunkType::Nodes => {
-                    XmacNodes::load(src, big_endian, multiply_order, chunk_size, chunk_version)?
-                        .map(XmacChunk::Nodes)
-                        .unwrap_or_else(|| {
-                            XmacChunk::Unknown(
-                                XmacUnknownChunk::load(
-                                    src,
-                                    chunk_type_id,
-                                    chunk_size,
-                                    chunk_version,
-                                )
-                                .unwrap(),
-                            )
-                        })
-                }
-                XmacChunkType::MaterialInfo => {
-                    XmacMaterials::load(src, big_endian, multiply_order, chunk_size, chunk_version)?
-                        .map(XmacChunk::Materials)
-                        .unwrap_or_else(|| {
-                            XmacChunk::Unknown(
-                                XmacUnknownChunk::load(
-                                    src,
-                                    chunk_type_id,
-                                    chunk_size,
-                                    chunk_version,
-                                )
-                                .unwrap(),
-                            )
-                        })
-                }
+                XmacChunkType::Info => Self::handle_unknown(
+                    XmacInfo::load(src, big_endian, multiply_order, &chunk_meta)?
+                        .map(XmacChunk::Info),
+                    src,
+                    &chunk_meta,
+                ),
+                XmacChunkType::Nodes => Self::handle_unknown(
+                    XmacNodes::load(src, big_endian, multiply_order, &chunk_meta)?
+                        .map(XmacChunk::Nodes),
+                    src,
+                    &chunk_meta,
+                ),
+                XmacChunkType::MaterialInfo => Self::handle_unknown(
+                    XmacMaterialInfo::load(src, big_endian, multiply_order, &chunk_meta)?
+                        .map(XmacChunk::MaterialInfo),
+                    src,
+                    &chunk_meta,
+                ),
+                XmacChunkType::StdMaterial => Self::handle_unknown(
+                    XmacStdMaterial::load(src, big_endian, multiply_order, &chunk_meta)?
+                        .map(XmacChunk::StdMaterial),
+                    src,
+                    &chunk_meta,
+                ),
                 _ => {
                     println!(
-                        "Unimplemented XMAC chunk {chunk_type:?}.{chunk_version}@{:x}",
+                        "Unimplemented XMAC chunk {chunk_type:?}.{}@{:x}",
+                        chunk_meta.version,
                         src.stream_position()?
                     );
-                    XmacChunk::Unknown(XmacUnknownChunk::load(
-                        src,
-                        chunk_type_id,
-                        chunk_size,
-                        chunk_version,
-                    )?)
+                    XmacChunk::Unknown(XmacUnknownChunk::load(src, &chunk_meta)?)
                 }
             }
         } else {
             println!(
-                "Unknown XMAC chunk id {chunk_type_id}.{chunk_version}@{:x}, skipping",
+                "Unknown XMAC chunk id {}.{}@{:x}, skipping",
+                chunk_meta.type_id,
+                chunk_meta.version,
                 src.stream_position()?
             );
-            XmacChunk::Unknown(XmacUnknownChunk::load(
-                src,
-                chunk_type_id,
-                chunk_size,
-                chunk_version,
-            )?)
+            XmacChunk::Unknown(XmacUnknownChunk::load(src, &chunk_meta)?)
         };
-        if src.stream_position()? != chunk_end && chunk_type_id != 13 {
+        let end_pos = src.stream_position()?;
+        if end_pos != chunk_end {
             println!(
-                "Chunk did not read exactly it's size, 0x{:x} vs expected 0x{:x}-0x{:x}!",
-                src.stream_position()?,
-                chunk_start,
-                chunk_end
+                "Chunk did not read exactly it's announced size, finished @0x{end_pos:x} vs expected 0x{chunk_start:x} to 0x{chunk_end:x} (diff: {})!",
+                end_pos - chunk_end
             );
             //src.seek(std::io::SeekFrom::Start(chunk_end))?;
         }
         Ok(result)
     }
+
+    fn handle_unknown<R: ArchiveReadTarget>(
+        parse_result: Option<XmacChunk>,
+        src: &mut R,
+        chunk_meta: &XmacChunkMeta,
+    ) -> XmacChunk {
+        parse_result
+            .unwrap_or_else(|| XmacChunk::Unknown(XmacUnknownChunk::load(src, chunk_meta).unwrap()))
+    }
+
+    // fn get_last_material_info(prev_chunks: &[XmacChunk]) -> Result<&XmacMaterialInfo> {
+    //     prev_chunks
+    //         .iter()
+    //         .rev()
+    //         .find_map(|c| {
+    //             if let XmacChunk::MaterialInfo(mat) = c {
+    //                 Some(mat)
+    //             } else {
+    //                 None
+    //             }
+    //         })
+    //         .ok_or_else(|| {
+    //             Error::InvalidStructure(
+    //                 "StdMaterials chunk without preceding MaterialInfo".to_string(),
+    //             )
+    //         })
+    // }
+}
+
+impl XmacChunkMeta {
+    fn load<R: ArchiveReadTarget>(src: &mut R, big_endian: bool) -> Result<Self> {
+        let type_id = read_u32_endian(src, big_endian)?;
+        let size = read_u32_endian(src, big_endian)?;
+        let version = read_u32_endian(src, big_endian)?;
+        Ok(Self {
+            type_id,
+            size,
+            version,
+        })
+    }
 }
 
 impl XmacUnknownChunk {
-    fn load<R: ArchiveReadTarget>(
-        src: &mut R,
-        chunk_type_id: u32,
-        chunk_size: u32,
-        chunk_version: u32,
-    ) -> Result<Self> {
-        let mut data = vec![0; chunk_size as usize];
+    fn load<R: ArchiveReadTarget>(src: &mut R, chunk_meta: &XmacChunkMeta) -> Result<Self> {
+        let mut data = vec![0; chunk_meta.size as usize];
         src.read_exact(&mut data)?;
         Ok(Self {
-            type_id: chunk_type_id,
-            version: chunk_version,
+            type_id: chunk_meta.type_id,
+            version: chunk_meta.version,
             data,
         })
     }
@@ -392,15 +475,14 @@ impl XmacInfo {
         src: &mut R,
         big_endian: bool,
         _multiply_order: bool,
-        chunk_size: u32,
-        chunk_version: u32,
+        chunk_meta: &XmacChunkMeta,
     ) -> Result<Option<Self>> {
         println!("Loading INFO chunk...");
-        match chunk_version {
+        match chunk_meta.version {
             2 => Ok(Some(XmacInfo {
-                lod_count: read_u32_endian(src, big_endian)?,
+                //lod_count: read_u32_endian(src, big_endian)?,
                 motion_extraction_node_index: read_i32_endian(src, big_endian)?,
-                //retarget_root_node_index: read_i32_endian(src, big_endian)?,
+                retarget_root_node_index: read_i32_endian(src, big_endian)?,
                 unknown1: read_u32_endian(src, big_endian)?,
                 unknown2: read_u32_endian(src, big_endian)?,
                 source_application: read_xmac_str(src, big_endian)?,
@@ -408,12 +490,11 @@ impl XmacInfo {
                 exporter_date: read_xmac_str(src, big_endian)?,
                 actor_name: read_xmac_str(src, big_endian)?,
             })),
-            _ => {
+            ver => {
                 println!(
-                    "Unknown XMAC info version {chunk_version}@{:x}, skipping",
+                    "Unknown XMAC info version {ver}@{:x}",
                     src.stream_position()?
                 );
-                src.seek_relative(chunk_size as i64)?;
                 Ok(None)
             }
         }
@@ -425,11 +506,10 @@ impl XmacNodes {
         src: &mut R,
         big_endian: bool,
         _multiply_order: bool,
-        chunk_size: u32,
-        chunk_version: u32,
+        chunk_meta: &XmacChunkMeta,
     ) -> Result<Option<Self>> {
         println!("Loading NODES chunk...");
-        match chunk_version {
+        match chunk_meta.version {
             1 => {
                 let node_count = read_u32_endian(src, big_endian)? as usize;
                 let root_count = read_u32_endian(src, big_endian)? as usize;
@@ -489,83 +569,126 @@ impl XmacNodes {
                 }
                 Ok(Some(XmacNodes { nodes }))
             }
-            _ => {
+            version => {
                 println!(
-                    "Unknown XMAC nodes version {chunk_version}@{:x}, skipping",
+                    "Unknown XMAC nodes version {version}@{:x}",
                     src.stream_position()?
                 );
-                src.seek_relative(chunk_size as i64)?;
                 Ok(None)
             }
         }
     }
 }
 
-impl XmacMaterials {
+impl XmacMaterialInfo {
     fn load<R: ArchiveReadTarget>(
         src: &mut R,
         big_endian: bool,
         _multiply_order: bool,
-        chunk_size: u32,
-        chunk_version: u32,
+        chunk_meta: &XmacChunkMeta,
     ) -> Result<Option<Self>> {
-        println!("Loading MATERIALS chunk...");
-        match chunk_version {
+        println!("Loading MATERIAL INFO chunk...");
+        match chunk_meta.version {
             1 => {
                 let total_materials = read_u32_endian(src, big_endian)? as usize;
-                let standard_materials = read_u32_endian(src, big_endian)? as usize;
+                let std_materials = read_u32_endian(src, big_endian)? as usize;
+                let fx_materials = read_u32_endian(src, big_endian)? as usize;
 
-                if total_materials != standard_materials {
+                if total_materials != std_materials {
                     return Err(Error::InvalidStructure(format!(
-                        "Cascaded Materials are not supported"
+                        "Non Std-Materials are not supported right now"
                     )));
                 }
-                let materials_chunk_id = read_u32_endian(src, big_endian)?;
-                assert_eq!(materials_chunk_id, 3);
-                let mut materials = Vec::with_capacity(total_materials);
-                for _idx in 0..total_materials {
-                    let mut unknown2 = [0u8; 95];
-                    src.read_exact(&mut unknown2)?;
-                    let map_count = read_u8(src)? as usize;
-                    let material_name = read_xmac_str(src, big_endian)?;
-                    let mut maps = Vec::with_capacity(map_count);
-                    for _idx in 0..map_count {
-                        let mut unknown3 = [0f32; 6];
-                        for f in unknown3.iter_mut() {
-                            *f = read_f32_endian(src, big_endian)?;
-                        }
-                        let unknown4 = read_u16_endian(src, big_endian)?;
 
-                        let map_type = XmacLayerType::try_from(read_u8(src)?)?;
-                        let unknown5 = read_u8(src)?;
-
-                        let texture = read_xmac_str(src, big_endian)?;
-
-                        maps.push(XmacMap {
-                            texture,
-                            map_type,
-                            unknown3,
-                            unknown4,
-                            unknown5,
-                        });
-                    }
-                    materials.push(XmacMaterial {
-                        name: material_name,
-                        maps,
-                        unknown2: Vec::from(unknown2),
-                    });
-
-                    println!("{:?}\n---", materials[materials.len() - 1]);
-                }
-
-                Ok(Some(XmacMaterials { materials }))
+                Ok(Some(Self {
+                    std_materials,
+                    fx_materials,
+                }))
             }
-            _ => {
+            ver => {
                 println!(
-                    "Unknown XMAC materials version {chunk_version}@{:x}, skipping",
+                    "Unknown XMAC material info version {ver}@{:x}, skipping",
                     src.stream_position()?
                 );
-                src.seek_relative(chunk_size as i64)?;
+                Ok(None)
+            }
+        }
+    }
+}
+
+impl XmacStdMaterial {
+    fn load<R: ArchiveReadTarget>(
+        src: &mut R,
+        big_endian: bool,
+        _multiply_order: bool,
+        chunk_meta: &XmacChunkMeta,
+    ) -> Result<Option<Self>> {
+        println!("Loading STD MATERIAL chunk...");
+        match chunk_meta.version {
+            2 => {
+                let ambient_color = Vector4::load_endian(src, big_endian)?;
+                let diffuse_color = Vector4::load_endian(src, big_endian)?;
+                let specular_color = Vector4::load_endian(src, big_endian)?;
+                let emissive_color = Vector4::load_endian(src, big_endian)?;
+                let shine = read_f32_endian(src, big_endian)?;
+                let shine_strength = read_f32_endian(src, big_endian)?;
+                let opacity = read_f32_endian(src, big_endian)?;
+                let refraction_index = read_f32_endian(src, big_endian)?;
+                let double_sided = read_bool(src)?;
+                let wireframe = read_bool(src)?;
+                let transparency_type = XmacMaterialTransparencyType::try_from(read_u8(src)?)?;
+                let layer_count = read_u8(src)?;
+                let material_name = read_xmac_str(src, big_endian)?;
+                let mut layers = Vec::with_capacity(layer_count as usize);
+                for _idx in 0..layer_count {
+                    let amount = read_f32_endian(src, big_endian)?;
+                    let u_offset = read_f32_endian(src, big_endian)?;
+                    let v_offset = read_f32_endian(src, big_endian)?;
+                    let u_tiling = read_f32_endian(src, big_endian)?;
+                    let v_tiling = read_f32_endian(src, big_endian)?;
+                    let rotation_rads = read_f32_endian(src, big_endian)?;
+                    let material_id = read_u16_endian(src, big_endian)?;
+
+                    let map_type = XmacLayerType::try_from(read_u8(src)?)?;
+                    let blend_mode = XmacLayerBlendMode::try_from(read_u8(src)?)?;
+
+                    let texture = read_xmac_str(src, big_endian)?;
+
+                    layers.push(XmacStandardMaterialLayer {
+                        texture,
+                        map_type,
+                        amount,
+                        u_offset,
+                        v_offset,
+                        u_tiling,
+                        v_tiling,
+                        rotation_rads,
+                        blend_mode,
+                        material_id,
+                    });
+                }
+                Ok(Some(Self {
+                    name: material_name,
+                    layers,
+
+                    ambient_color,
+                    diffuse_color,
+                    specular_color,
+                    emissive_color,
+                    shine,
+                    shine_strength,
+                    opacity,
+                    refraction_index,
+                    double_sided,
+                    wireframe,
+                    transparency_type,
+                }))
+            }
+            ver => {
+                println!(
+                    "Unknown XMAC materials version {ver}@{:x}, skipping",
+                    src.stream_position()?
+                );
                 Ok(None)
             }
         }
@@ -577,8 +700,7 @@ impl XmacMesh {
         src: &mut R,
         big_endian: bool,
         multiply_order: bool,
-        chunk_size: u32,
-        chunk_version: u32,
+        chunk_meta: &XmacChunkMeta,
     ) -> Result<Option<Self>> {
         let node_count = read_u32_endian(src, big_endian)?;
         let base_verts_count = read_u32_endian(src, big_endian)?;
