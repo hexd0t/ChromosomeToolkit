@@ -50,7 +50,7 @@ impl TpleFile {
 
     pub fn save(&self, arch: &mut PakFile) -> Result<()> {
         let magic = "GENOMETP".as_bytes();
-        arch.write_all(&magic)?;
+        arch.write_all(magic)?;
         let version = 219;
         write_u16(arch, version)?;
         write_u32(arch, self.entities.len() as u32)?;

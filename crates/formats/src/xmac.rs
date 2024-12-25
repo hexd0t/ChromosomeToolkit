@@ -38,6 +38,7 @@ pub enum XmacChunk {
     Nodes(XmacNodes),
     MaterialInfo(XmacMaterialInfo),
     StdMaterial(XmacStdMaterial),
+    Mesh(XmacMesh),
     Unknown(XmacUnknownChunk),
 }
 
@@ -149,47 +150,49 @@ pub enum XmacMaterialTransparencyType {
 #[derive(Debug, Deserialize, Serialize, IntoPrimitive, TryFromPrimitive, Clone, Copy)]
 pub enum XmacLayerBlendMode {
     /// The foreground texture covers up the background texture entirely.
-    NONE = 0,
+    None = 0,
     /// The foreground texture is applied like a decal to the background.
     /// The shape of the decal is determined by the foreground alpha.
-    OVER = 1,
+    Over = 1,
     /// The result is the background texture cut in the shape of the foreground alpha.
-    IN = 2,
+    In = 2,
     /// The result is the opposite of In.
     /// It is as if the shape of the foreground alpha has been cut out of the background.
-    OUT = 3,
+    Out = 3,
     /// The result color is the foreground color added to the background color as if being projected on the background through a slide projector.
     /// The result color is then applied over the background color using the foreground alpha to define the opacity of the result.
-    ADD = 4,
+    Add = 4,
     /// The result color is the foreground color subtracted from the background color.
     /// The result color is then applied over the background color using the foreground alpha to define the opacity of the result.
-    SUBTRACT = 5,
+    Subtract = 5,
     /// The result color is the foreground color multiplied by the background color.
     /// The result color is then applied over the background color using the foreground alpha to define the opacity of the result.
-    MULTIPLY = 6,
+    Multiply = 6,
     /// The result color is the difference between the foreground color and the background color.
     /// The result color is then applied over the background color using the foreground alpha to define the opacity of the result.
-    DIFFERENCE = 7,
+    Difference = 7,
     /// The result color of each pixel is the background color or foreground color, whichever is lighter.
     /// The result color is then applied over the background color using the foreground alpha to define the opacity of the result.
-    LIGHTEN = 8,
+    Lighten = 8,
     /// The result color of each pixel is the background color or foreground color, whichever is darker.
     /// The result color is then applied over the background color using the foreground alpha to define the opacity of the result.
-    DARKEN = 9,
+    Darken = 9,
     /// The result color is the background color with saturation increased in proportion to the foreground color scaled by foreground alpha.
     /// If the foreground color is red, for example, the result color will be the background color with more saturated reds.
-    SATURATE = 10,
+    Saturate = 10,
     /// The result color is the background color with saturation decreased in proportion to the foreground color scaled by foreground alpha.
     /// If the foreground color is red, for example, the result color will be the background color with desaturated reds.
-    DESATURATE = 11,
+    Desaturate = 11,
     /// The result color is the background color mixed with the foreground color, brighter where the foreground is bright and darker where the foreground is dark.
     /// It is as if the foreground texture represents the light falling on the background.
     /// The result color is then applied over the background color using the foreground alpha to define the opacity of the result.
-    ILLUMINATE = 12,
+    Illuminate = 12,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct XmacStandardMaterialLayer {
+    #[serde(rename = "type")]
+    ty: XmacMaterialLayerType,
     texture: String,
 
     amount: f32,
@@ -199,13 +202,12 @@ pub struct XmacStandardMaterialLayer {
     v_tiling: f32,
     rotation_rads: f32,
     material_id: u16,
-    map_type: XmacLayerType,
     blend_mode: XmacLayerBlendMode,
 }
 
 #[repr(u8)]
 #[derive(Debug, Deserialize, Serialize, IntoPrimitive, TryFromPrimitive, Clone, Copy)]
-pub enum XmacLayerType {
+pub enum XmacMaterialLayerType {
     Unknown = 0,
     Ambient = 1,
     Diffuse = 2,
@@ -226,7 +228,65 @@ pub enum XmacLayerType {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct XmacMesh {}
+pub struct XmacMesh {
+    vertex_attribute_layers: Vec<XmacMeshAttribLayer>,
+    submeshes: Vec<XmacMeshSubmesh>,
+
+    node_id: u32,
+    unknown: u32,
+}
+#[derive(Debug, Deserialize, Serialize)]
+pub struct XmacMeshAttribLayer {
+    attribs: XmacMeshAttrib,
+    unknown1: u32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum XmacMeshAttrib {
+    Positions(Vec<Vector3>),
+    Normals(Vec<Vector3>),
+    Tangents(Vec<Vector4>),
+    UvCoords(Vec<Vector2>),
+    /// Contains a 4-byte RGBA value
+    Colors32(Vec<u32>),
+    OriginalVertexNumbers(Vec<u32>),
+    /// Contains 4 f32 color entries (RGBA)
+    Colors128(Vec<Vector4>),
+    BiTangents(Vec<Vector3>),
+    ClothData(Vec<u32>),
+}
+
+#[repr(u32)]
+#[derive(Debug, Deserialize, Serialize, IntoPrimitive, TryFromPrimitive, Clone, Copy)]
+pub enum XmacMeshAttribLayerType {
+    /// Contains a Vector3
+    Positions = 0,
+    /// Contains a Vector3
+    Normals = 1,
+    /// Contains a Vector4
+    Tangents = 2,
+    /// Contains a Vector2
+    UvCoords = 3,
+    /// Contains a 4-byte RGBA value
+    Colors32 = 4,
+    /// Contains a u32
+    OriginalVertexNumbers = 5,
+    /// Contains 4 f32 color entries (RGBA)
+    Colors128 = 6,
+    /// Contains a Vector3
+    BiTangents = 7,
+    /// Contains a u32
+    ClothData = 8,
+}
+#[derive(Debug, Deserialize, Serialize)]
+pub struct XmacMeshSubmesh {
+    indices: Vec<u32>,
+    bones: Vec<u32>,
+
+    vertices_count: u32,
+    material_idx: u32,
+}
 
 #[repr(u32)]
 #[derive(Debug, Deserialize, Serialize, IntoPrimitive, TryFromPrimitive, Clone, Copy)]
@@ -235,8 +295,7 @@ pub enum XmacChunkType {
     Node = 0,
     Mesh = 1,
     SkinningInfo = 2,
-    /// This is Chunk should be repeated for each Material,
-    /// but R1 just puts all Materials into one (whose chunk size is also wrong...)
+    /// R1's data has invalid chunk sizes for these for some reason...
     StdMaterial = 3,
     StdMaterialLayer = 4,
     FxMaterial = 5,
@@ -388,6 +447,12 @@ impl XmacChunk {
                     src,
                     &chunk_meta,
                 ),
+                XmacChunkType::Mesh => Self::handle_unknown(
+                    XmacMesh::load(src, big_endian, multiply_order, &chunk_meta)?
+                        .map(XmacChunk::Mesh),
+                    src,
+                    &chunk_meta,
+                ),
                 _ => {
                     println!(
                         "Unimplemented XMAC chunk {chunk_type:?}.{}@{:x}",
@@ -409,10 +474,12 @@ impl XmacChunk {
         let end_pos = src.stream_position()?;
         if end_pos != chunk_end {
             println!(
-                "Chunk did not read exactly it's announced size, finished @0x{end_pos:x} vs expected 0x{chunk_start:x} to 0x{chunk_end:x} (diff: {})!",
+                "Chunk did not read exactly it's announced size, finished at 0x{end_pos:x} vs expected 0x{chunk_start:x} to 0x{chunk_end:x} (diff: {})!",
                 end_pos - chunk_end
             );
-            //src.seek(std::io::SeekFrom::Start(chunk_end))?;
+            if chunk_meta.type_id == 3 {
+                println!("(This is known for R1 StdMaterials)");
+            }
         }
         Ok(result)
     }
@@ -595,9 +662,9 @@ impl XmacMaterialInfo {
                 let fx_materials = read_u32_endian(src, big_endian)? as usize;
 
                 if total_materials != std_materials {
-                    return Err(Error::InvalidStructure(format!(
-                        "Non Std-Materials are not supported right now"
-                    )));
+                    return Err(Error::InvalidStructure(
+                        "Non Std-Materials are not supported right now".to_string(),
+                    ));
                 }
 
                 Ok(Some(Self {
@@ -649,14 +716,14 @@ impl XmacStdMaterial {
                     let rotation_rads = read_f32_endian(src, big_endian)?;
                     let material_id = read_u16_endian(src, big_endian)?;
 
-                    let map_type = XmacLayerType::try_from(read_u8(src)?)?;
+                    let layer_type = XmacMaterialLayerType::try_from(read_u8(src)?)?;
                     let blend_mode = XmacLayerBlendMode::try_from(read_u8(src)?)?;
 
                     let texture = read_xmac_str(src, big_endian)?;
 
                     layers.push(XmacStandardMaterialLayer {
                         texture,
-                        map_type,
+                        ty: layer_type,
                         amount,
                         u_offset,
                         v_offset,
@@ -702,12 +769,190 @@ impl XmacMesh {
         multiply_order: bool,
         chunk_meta: &XmacChunkMeta,
     ) -> Result<Option<Self>> {
-        let node_count = read_u32_endian(src, big_endian)?;
-        let base_verts_count = read_u32_endian(src, big_endian)?;
-        let vertices_count = read_u32_endian(src, big_endian)?;
-        let indices_count = read_u32_endian(src, big_endian)?;
+        println!("Loading MESH chunk...");
+        match chunk_meta.version {
+            1 => {
+                let node_id = read_u32_endian(src, big_endian)?;
+                let orig_verts_count = read_u32_endian(src, big_endian)?;
+                let total_vertices_count = read_u32_endian(src, big_endian)?;
+                let total_indices_count = read_u32_endian(src, big_endian)?;
 
-        Ok(Some(Self {}))
+                let submesh_count = read_u32_endian(src, big_endian)?;
+                let layer_count = read_u32_endian(src, big_endian)?;
+                // let is_collision_mesh = read_bool(src)?;
+                // let is_triangle_mesh = read_bool(src)?;
+                let unknown = read_u32_endian(src, big_endian)?;
+
+                let mut layers = Vec::with_capacity(layer_count as usize);
+                for _layer_idx in 0..layer_count {
+                    layers.push(XmacMeshAttribLayer::load(
+                        src,
+                        big_endian,
+                        multiply_order,
+                        total_vertices_count,
+                    )?);
+                }
+
+                let mut submeshes = Vec::with_capacity(submesh_count as usize);
+                for _mesh_idx in 0..submesh_count {
+                    submeshes.push(XmacMeshSubmesh::load(src, big_endian)?);
+                }
+
+                Ok(Some(Self {
+                    vertex_attribute_layers: layers,
+                    submeshes,
+                    node_id,
+                    unknown,
+                }))
+            }
+
+            ver => {
+                println!(
+                    "Unknown XMAC mesh version {ver}@{:x}, skipping",
+                    src.stream_position()?
+                );
+                Ok(None)
+            }
+        }
+    }
+}
+
+impl XmacMeshAttribLayer {
+    fn load<R: ArchiveReadTarget>(
+        src: &mut R,
+        big_endian: bool,
+        multiply_order: bool,
+        vertices_count: u32,
+    ) -> Result<Self> {
+        let layer_type = read_u32_endian(src, big_endian)?;
+        let layer_type = XmacMeshAttribLayerType::try_from(layer_type)?;
+        let attrib_size = read_u32_endian(src, big_endian)?;
+        let expected_attrib_size = match &layer_type {
+            XmacMeshAttribLayerType::Positions => 3 * 4,
+            XmacMeshAttribLayerType::Normals => 3 * 4,
+            XmacMeshAttribLayerType::Tangents => 4 * 4,
+            XmacMeshAttribLayerType::UvCoords => 2 * 4,
+            XmacMeshAttribLayerType::Colors32 => 4,
+            XmacMeshAttribLayerType::OriginalVertexNumbers => 4,
+            XmacMeshAttribLayerType::Colors128 => 4 * 4,
+            XmacMeshAttribLayerType::BiTangents => 3 * 4,
+            XmacMeshAttribLayerType::ClothData => 4,
+        };
+        if attrib_size != expected_attrib_size {
+            return Err(Error::InvalidStructure(format!("Attribute size mismatch - {layer_type:?} should have {expected_attrib_size}, found {attrib_size}!")));
+        }
+        let unknown1 = read_u32_endian(src, big_endian)?;
+
+        let attribs = match &layer_type {
+            XmacMeshAttribLayerType::Positions => XmacMeshAttrib::Positions(
+                XmacMeshAttrib::load_vector3(src, big_endian, vertices_count)?,
+            ),
+            XmacMeshAttribLayerType::Normals => XmacMeshAttrib::Normals(
+                XmacMeshAttrib::load_vector3(src, big_endian, vertices_count)?,
+            ),
+            XmacMeshAttribLayerType::Tangents => XmacMeshAttrib::Tangents(
+                XmacMeshAttrib::load_vector4(src, big_endian, vertices_count)?,
+            ),
+            XmacMeshAttribLayerType::UvCoords => XmacMeshAttrib::UvCoords(
+                XmacMeshAttrib::load_vector2(src, big_endian, vertices_count)?,
+            ),
+            XmacMeshAttribLayerType::Colors32 => {
+                XmacMeshAttrib::Colors32(XmacMeshAttrib::load_u32(src, big_endian, vertices_count)?)
+            }
+            XmacMeshAttribLayerType::OriginalVertexNumbers => {
+                XmacMeshAttrib::OriginalVertexNumbers(XmacMeshAttrib::load_u32(
+                    src,
+                    big_endian,
+                    vertices_count,
+                )?)
+            }
+            XmacMeshAttribLayerType::Colors128 => XmacMeshAttrib::Colors128(
+                XmacMeshAttrib::load_vector4(src, big_endian, vertices_count)?,
+            ),
+            XmacMeshAttribLayerType::BiTangents => XmacMeshAttrib::BiTangents(
+                XmacMeshAttrib::load_vector3(src, big_endian, vertices_count)?,
+            ),
+            XmacMeshAttribLayerType::ClothData => XmacMeshAttrib::ClothData(
+                XmacMeshAttrib::load_u32(src, big_endian, vertices_count)?,
+            ),
+        };
+
+        Ok(Self { attribs, unknown1 })
+    }
+}
+
+impl XmacMeshAttrib {
+    fn load_vector2<R: ArchiveReadTarget>(
+        src: &mut R,
+        big_endian: bool,
+        vertices_count: u32,
+    ) -> Result<Vec<Vector2>> {
+        let mut attribs = Vec::with_capacity(vertices_count as usize);
+
+        for _ver_idx in 0..vertices_count {
+            attribs.push(Vector2::load_endian(src, big_endian)?);
+        }
+        Ok(attribs)
+    }
+    fn load_vector3<R: ArchiveReadTarget>(
+        src: &mut R,
+        big_endian: bool,
+        vertices_count: u32,
+    ) -> Result<Vec<Vector3>> {
+        let mut attribs = Vec::with_capacity(vertices_count as usize);
+
+        for _ver_idx in 0..vertices_count {
+            attribs.push(Vector3::load_endian(src, big_endian)?);
+        }
+        Ok(attribs)
+    }
+    fn load_vector4<R: ArchiveReadTarget>(
+        src: &mut R,
+        big_endian: bool,
+        vertices_count: u32,
+    ) -> Result<Vec<Vector4>> {
+        let mut attribs = Vec::with_capacity(vertices_count as usize);
+
+        for _ver_idx in 0..vertices_count {
+            attribs.push(Vector4::load_endian(src, big_endian)?);
+        }
+        Ok(attribs)
+    }
+    fn load_u32<R: ArchiveReadTarget>(
+        src: &mut R,
+        big_endian: bool,
+        vertices_count: u32,
+    ) -> Result<Vec<u32>> {
+        let mut attribs = Vec::with_capacity(vertices_count as usize);
+
+        for _ver_idx in 0..vertices_count {
+            attribs.push(read_u32_endian(src, big_endian)?);
+        }
+        Ok(attribs)
+    }
+}
+
+impl XmacMeshSubmesh {
+    fn load<R: ArchiveReadTarget>(src: &mut R, big_endian: bool) -> Result<Self> {
+        let indices_count = read_u32_endian(src, big_endian)?;
+        let vertices_count = read_u32_endian(src, big_endian)?;
+        let material_idx = read_u32_endian(src, big_endian)?;
+        let bones_count = read_u32_endian(src, big_endian)?;
+
+        let mut indices = Vec::with_capacity(indices_count as usize);
+        for _idx in 0..indices_count {
+            indices.push(read_u32_endian(src, big_endian)?);
+        }
+        let mut bones = Vec::with_capacity(bones_count as usize);
+        for _idx in 0..bones_count {
+            bones.push(read_u32_endian(src, big_endian)?);
+        }
+        Ok(Self {
+            indices,
+            bones,
+            vertices_count,
+            material_idx,
+        })
     }
 }
 

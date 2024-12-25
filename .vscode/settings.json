@@ -1,5 +1,6 @@
 {
     "cSpell.words": [
+        "attrib",
         "Baltram",
         "bitflags",
         "desaturate",
@@ -9,6 +10,8 @@
         "repr",
         "retarget",
         "retargeting",
+        "submesh",
+        "submeshes",
         "Tple",
         "Xmac"
     ]

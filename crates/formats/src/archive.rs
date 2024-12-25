@@ -141,7 +141,7 @@ impl<'a> PakFileTempBlock<'a> {
     }
 }
 
-impl<'a> Write for PakFileTempBlock<'a> {
+impl Write for PakFileTempBlock<'_> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.temp_data.write(buf)
     }
@@ -208,7 +208,7 @@ impl ArchiveWriteTarget for PakFile {
     }
 }
 
-impl<'a> ArchiveWriteTarget for PakFileTempBlock<'a> {
+impl ArchiveWriteTarget for PakFileTempBlock<'_> {
     fn create_str_idx(&mut self, content: &str) -> Result<usize> {
         self.target.create_str_idx(content)
     }
