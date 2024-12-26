@@ -86,7 +86,7 @@ impl MorphTarget {
         );
         let phoneme_sets_count = read_u32_endian(src, big_endian)?;
         assert_eq!(
-            transformations_count, 0,
+            phoneme_sets_count, 0,
             "Phoneme Sets are not implemented yet"
         );
         let name = read_xmac_str(src, big_endian)?;
