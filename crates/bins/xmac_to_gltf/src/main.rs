@@ -9,7 +9,7 @@ use std::{
 use formats::{
     types::{
         properties::{PropData, Property},
-        BoundingBox, Vector3,
+        BoundingBox, Vector2, Vector3, Vector4,
     },
     xmac::{
         chunks::{
@@ -93,19 +93,6 @@ fn xmac_to_gltf(input: &XmacFile, src_filepath: &str) -> Result<GltfRoot> {
     translate_nodes(input, &mut output)?;
     translate_meshes(input, &mut output, src_filepath)?;
 
-    // let buffer_length = triangle_vertices.len() * mem::size_of::<Vertex>();
-    // let buffer = root.push(json::Buffer {
-    //     byte_length: USize64::from(buffer_length),
-    //     extensions: Default::default(),
-    //     extras: Default::default(),
-    //     name: None,
-    //     uri: if output == Output::Standard {
-    //         Some("buffer0.bin".into())
-    //     } else {
-    //         None
-    //     },
-    // });
-
     Ok(output)
 }
 
@@ -119,11 +106,18 @@ fn translate_nodes(input: &XmacFile, output: &mut GltfRoot) -> Result<()> {
     }
     if let Some(nodes) = input.chunks.iter().find_map(get_nodes_chunk) {
         for (node_idx, node) in nodes.into_iter().enumerate() {
+            let scale = if node.parent_idx.is_none() {
+                let mut scale = node.local_scale.clone();
+                scale.y *= -1.0; //Flip Y-Axis for root nodes to reflect LHS vs RHS
+                scale
+            } else {
+                node.local_scale.clone()
+            };
             let gltf_node = GltfNode {
                 name: Some(node.name.clone()),
                 rotation: Some(node.rotation.clone().into()),
                 translation: Some(node.local_pos.clone().into()),
-                scale: Some(node.local_scale.clone().into()),
+                scale: Some(scale.into()),
 
                 ..GltfNode::default()
             };
@@ -188,7 +182,8 @@ fn translate_meshes(input: &XmacFile, output: &mut GltfRoot, src_filepath: &str)
             .unwrap_or_else(|| format!("mesh_{mesh_idx}"));
         let mesh_buffer_path =
             OsString::from(src_filepath.replace("._xmac", &format!("._xmac.{}.bin", &mesh_name)));
-        let positions = create_mesh_buffer(mesh, output, &Path::new(&mesh_buffer_path))?;
+        let (positions, normals, tangents, uvs) =
+            create_mesh_buffer(mesh, output, &Path::new(&mesh_buffer_path))?;
 
         let mut primitives = Vec::with_capacity(mesh.submeshes.len());
         let mut index_offset = 0;
@@ -206,6 +201,9 @@ fn translate_meshes(input: &XmacFile, output: &mut GltfRoot, src_filepath: &str)
                 attributes: {
                     let mut map = BTreeMap::new();
                     map.insert(GltfValid(gltf::json::mesh::Semantic::Positions), positions);
+                    map.insert(GltfValid(gltf::json::mesh::Semantic::Normals), normals);
+                    map.insert(GltfValid(gltf::json::mesh::Semantic::Tangents), tangents);
+                    map.insert(GltfValid(gltf::json::mesh::Semantic::TexCoords(0)), uvs);
                     map
                 },
                 extensions: None,
@@ -236,11 +234,37 @@ fn create_mesh_buffer(
     mesh: &XmacMesh,
     output: &mut GltfRoot,
     buffer_path: &Path,
-) -> Result<GltfIndex<GltfAccessor>> {
+) -> Result<(
+    GltfIndex<GltfAccessor>,
+    GltfIndex<GltfAccessor>,
+    GltfIndex<GltfAccessor>,
+    GltfIndex<GltfAccessor>,
+)> {
     use gltf::json::validation::USize64;
 
     fn get_position_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vector3>> {
         if let XmacMeshAttrib::Positions(val) = &attrib.attribs {
+            Some(val)
+        } else {
+            None
+        }
+    }
+    fn get_normal_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vector3>> {
+        if let XmacMeshAttrib::Normals(val) = &attrib.attribs {
+            Some(val)
+        } else {
+            None
+        }
+    }
+    fn get_tangent_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vector4>> {
+        if let XmacMeshAttrib::Tangents(val) = &attrib.attribs {
+            Some(val)
+        } else {
+            None
+        }
+    }
+    fn get_uv_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vector2>> {
+        if let XmacMeshAttrib::UvCoords(val) = &attrib.attribs {
             Some(val)
         } else {
             None
@@ -252,9 +276,31 @@ fn create_mesh_buffer(
         .iter()
         .find_map(get_position_attrib)
         .unwrap();
-    const POSITION_SIZE: usize = std::mem::size_of::<Vector3>();
+    let mesh_normals = mesh
+        .vertex_attribute_layers
+        .iter()
+        .find_map(get_normal_attrib)
+        .unwrap();
+    let mesh_tangents = mesh
+        .vertex_attribute_layers
+        .iter()
+        .find_map(get_tangent_attrib)
+        .unwrap();
+    let mesh_uvs = mesh
+        .vertex_attribute_layers
+        .iter()
+        .find_map(get_uv_attrib)
+        .unwrap();
 
-    let buffer_length = mesh_positions.len() * POSITION_SIZE;
+    const POSITION_SIZE: usize = std::mem::size_of::<Vector3>();
+    const NORMAL_SIZE: usize = std::mem::size_of::<Vector3>();
+    const TANGENT_SIZE: usize = std::mem::size_of::<Vector4>();
+    const UV_SIZE: usize = std::mem::size_of::<Vector2>();
+    const VERTEX_SIZE: usize = POSITION_SIZE + NORMAL_SIZE + TANGENT_SIZE + UV_SIZE;
+
+    let vertex_count = mesh_positions.len();
+
+    let buffer_length = vertex_count * VERTEX_SIZE;
     let buffer = output.push(GltfBuffer {
         byte_length: USize64::from(buffer_length),
         extensions: Default::default(),
@@ -272,16 +318,16 @@ fn create_mesh_buffer(
         buffer,
         byte_length: USize64::from(buffer_length),
         byte_offset: None,
-        byte_stride: Some(gltf::json::buffer::Stride(POSITION_SIZE)),
+        byte_stride: Some(gltf::json::buffer::Stride(VERTEX_SIZE)),
         extensions: Default::default(),
         extras: Default::default(),
         name: None,
         target: Some(GltfValid(gltf::json::buffer::Target::ArrayBuffer)),
     });
     let gltf_positions = output.push(GltfAccessor {
-        buffer_view: Some(buffer_view),
+        buffer_view: Some(buffer_view.clone()),
         byte_offset: Some(USize64(0)),
-        count: USize64::from(mesh_positions.len()),
+        count: USize64::from(vertex_count),
         component_type: GltfValid(gltf::json::accessor::GenericComponentType(
             gltf::json::accessor::ComponentType::F32,
         )),
@@ -294,16 +340,67 @@ fn create_mesh_buffer(
         normalized: false,
         sparse: None,
     });
+    let gltf_normals = output.push(GltfAccessor {
+        buffer_view: Some(buffer_view.clone()),
+        byte_offset: Some(USize64(POSITION_SIZE as u64)),
+        count: USize64::from(vertex_count),
+        component_type: GltfValid(gltf::json::accessor::GenericComponentType(
+            gltf::json::accessor::ComponentType::F32,
+        )),
+        extensions: Default::default(),
+        extras: Default::default(),
+        type_: GltfValid(gltf::json::accessor::Type::Vec3),
+        min: None,
+        max: None,
+        name: None,
+        normalized: false,
+        sparse: None,
+    });
+    let gltf_tangents = output.push(GltfAccessor {
+        buffer_view: Some(buffer_view.clone()),
+        byte_offset: Some(USize64((POSITION_SIZE + NORMAL_SIZE) as u64)),
+        count: USize64::from(vertex_count),
+        component_type: GltfValid(gltf::json::accessor::GenericComponentType(
+            gltf::json::accessor::ComponentType::F32,
+        )),
+        extensions: Default::default(),
+        extras: Default::default(),
+        type_: GltfValid(gltf::json::accessor::Type::Vec4),
+        min: None,
+        max: None,
+        name: None,
+        normalized: false,
+        sparse: None,
+    });
+    let gltf_uv = output.push(GltfAccessor {
+        buffer_view: Some(buffer_view.clone()),
+        byte_offset: Some(USize64((POSITION_SIZE + NORMAL_SIZE + TANGENT_SIZE) as u64)),
+        count: USize64::from(vertex_count),
+        component_type: GltfValid(gltf::json::accessor::GenericComponentType(
+            gltf::json::accessor::ComponentType::F32,
+        )),
+        extensions: Default::default(),
+        extras: Default::default(),
+        type_: GltfValid(gltf::json::accessor::Type::Vec2),
+        min: None,
+        max: None,
+        name: None,
+        normalized: false,
+        sparse: None,
+    });
 
     let buffer_file = std::fs::File::create(buffer_path)?;
     let mut buffer_file = BufWriter::new(buffer_file);
 
-    for idx in 0..mesh_positions.len() {
+    for idx in 0..vertex_count {
         mesh_positions[idx].save(&mut buffer_file)?;
+        mesh_normals[idx].save(&mut buffer_file)?;
+        mesh_tangents[idx].save(&mut buffer_file)?;
+        mesh_uvs[idx].save(&mut buffer_file)?;
     }
-    buffer_file.flush();
+    buffer_file.flush()?;
 
-    Ok(gltf_positions)
+    Ok((gltf_positions, gltf_normals, gltf_tangents, gltf_uv))
 }
 
 fn create_submesh_buffer(
@@ -363,13 +460,13 @@ fn create_submesh_buffer(
     for index in &submesh.indices {
         formats::helpers::write_u32(&mut buffer_file, *index + index_offset)?;
     }
-    buffer_file.flush();
+    buffer_file.flush()?;
 
     Ok(gltf_indices)
 }
 
 #[derive(Debug)]
-enum ConvError {
+pub enum ConvError {
     NotImplemented(String),
     MandatoryDataMissing(String),
     IoError(std::io::Error),

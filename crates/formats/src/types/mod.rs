@@ -358,7 +358,7 @@ impl Vector2 {
         })
     }
 
-    pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<()> {
+    pub fn save<W: Write>(&self, dst: &mut W) -> std::io::Result<()> {
         write_f32(dst, self.x)?;
         write_f32(dst, self.y)?;
         Ok(())
@@ -420,7 +420,7 @@ impl Vector4 {
             w: read_f32_endian(src, big_endian)?,
         })
     }
-    pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<()> {
+    pub fn save<W: Write>(&self, dst: &mut W) -> std::io::Result<()> {
         write_f32(dst, self.x)?;
         write_f32(dst, self.y)?;
         write_f32(dst, self.z)?;
