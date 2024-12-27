@@ -4,6 +4,9 @@ pub mod properties;
 pub mod property_set;
 pub mod template;
 
+#[cfg(feature = "gltf")]
+pub mod gltf;
+
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use uuid::Uuid;
@@ -384,7 +387,7 @@ impl Vector3 {
             z: read_f32_endian(src, big_endian)?,
         })
     }
-    pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<()> {
+    pub fn save<W: Write>(&self, dst: &mut W) -> std::io::Result<()> {
         write_f32(dst, self.x)?;
         write_f32(dst, self.y)?;
         write_f32(dst, self.z)?;
@@ -426,7 +429,7 @@ impl Vector4 {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Quaternion {
     pub x: f32,
     pub y: f32,

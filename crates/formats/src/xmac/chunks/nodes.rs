@@ -140,3 +140,21 @@ impl IndexMut<XmacNodeId> for XmacNodes {
         &mut self.nodes[index.0 as usize]
     }
 }
+impl IntoIterator for XmacNodes {
+    type Item = XmacNode;
+
+    type IntoIter = <Vec<XmacNode> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.nodes.into_iter()
+    }
+}
+impl<'a> IntoIterator for &'a XmacNodes {
+    type Item = &'a XmacNode;
+
+    type IntoIter = <&'a Vec<XmacNode> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        (&self.nodes).into_iter()
+    }
+}

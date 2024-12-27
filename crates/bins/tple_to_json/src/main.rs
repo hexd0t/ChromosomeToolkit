@@ -32,7 +32,8 @@ fn main() {
             continue;
         }
 
-        let mut in_data = std::fs::File::open(path).unwrap();
+        let in_data = std::fs::File::open(path).unwrap();
+        let mut in_data = std::io::BufReader::new(in_data);
         let arch = match PakFile::load(&mut in_data) {
             Ok(a) => a,
             Err(e) => {

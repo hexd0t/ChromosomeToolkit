@@ -1,3 +1,4 @@
+use bitflags::bitflags;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -23,8 +24,30 @@ pub struct MorphTarget {
     range_max: f32,
 
     mesh_deform_deltas: Vec<MeshDeformDeltas>,
+    phoneme_set: PhonemeSet,
 
     unknown1: u32,
+}
+
+bitflags! {
+    #[derive(Debug, Deserialize, Serialize)]
+    #[serde(transparent)]
+    pub struct PhonemeSet : u32 {
+        // Original Phonemes:
+        const None                                 = 0;
+        const NeutralPose                          = 1 << 0; //1
+        const M_B_P_X                              = 1 << 1; //2
+        const AA_AO_OW                             = 1 << 2; //4
+        const IH_AE_AH_EY_AY_H                     = 1 << 3; //8
+        const AW                                   = 1 << 4; //10
+        const N_NG_CH_J_DH_D_G_T_K_Z_ZH_TH_S_SH    = 1 << 5; //20
+        const IY_EH_Y                              = 1 << 6; //40
+        const UW_UH_OY                             = 1 << 7; //80
+        const F_V                                  = 1 << 8; //100
+        const L_EL                                 = 1 << 9; //200
+        const W                                    = 1 << 10; //400
+        const R_ER                                 = 1 << 11; //800
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -80,21 +103,19 @@ impl MorphTarget {
         let unknown1 = read_u32_endian(src, big_endian)?;
         let mesh_deform_deltas_count = read_u32_endian(src, big_endian)?;
         let transformations_count = read_u32_endian(src, big_endian)?;
-        assert_eq!(
-            transformations_count, 0,
-            "Transformations are not implemented yet"
-        );
-        let phoneme_sets_count = read_u32_endian(src, big_endian)?;
-        assert_eq!(
-            phoneme_sets_count, 0,
-            "Phoneme Sets are not implemented yet"
-        );
+        let phoneme_set = read_u32_endian(src, big_endian)?;
+        let phoneme_set = PhonemeSet::from_bits(phoneme_set).unwrap();
+
         let name = read_xmac_str(src, big_endian)?;
 
         let mut mesh_deform_deltas = Vec::with_capacity(mesh_deform_deltas_count as usize);
         for _idx in 0..mesh_deform_deltas_count {
             mesh_deform_deltas.push(MeshDeformDeltas::load(src, big_endian)?);
         }
+        assert_eq!(
+            transformations_count, 0,
+            "Transformations are not implemented yet"
+        );
 
         Ok(Self {
             range_min,
@@ -102,6 +123,7 @@ impl MorphTarget {
             name,
             mesh_deform_deltas,
             unknown1,
+            phoneme_set,
         })
     }
 }

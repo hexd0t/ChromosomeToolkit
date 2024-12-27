@@ -6,11 +6,17 @@ members = [
     "crates/bins/json_to_lrent",
     "crates/bins/tple_to_json",
     "crates/bins/json_to_tple",
-    "crates/bins/xmac_to_usd",
+    "crates/bins/xmac_to_gltf",
 ]
 resolver = "2"
+
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
+gltf = { version = "1.4", features = [
+    "KHR_materials_specular",
+    "KHR_materials_ior",
+    "extras",
+] }
 
 [profile.release]
 strip = true

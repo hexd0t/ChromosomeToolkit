@@ -14,7 +14,7 @@
 //!    at https://github.com/Baltram/rmtools/blob/master/rmStuff/rmXmacReader.cpp
 //!    License: GPLv3
 
-mod chunks;
+pub mod chunks;
 
 use serde::{Deserialize, Serialize};
 

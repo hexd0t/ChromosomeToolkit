@@ -1,0 +1,10 @@
+[package]
+name = "xmac_to_gltf"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+formats = { path = "../../formats", features = ["gltf"] }
+serde_json = "1.0"
+serde = { workspace = true }
+gltf = { workspace = true }

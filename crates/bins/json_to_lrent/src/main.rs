@@ -33,7 +33,8 @@ fn main() {
             continue;
         }
 
-        let in_data = BufReader::new(std::fs::File::open(path).unwrap());
+        let in_data = std::fs::File::open(path).unwrap();
+        let in_data = std::io::BufReader::new(in_data);
 
         let lrent: LrentFile = match serde_json::from_reader(in_data) {
             Ok(r) => r,
