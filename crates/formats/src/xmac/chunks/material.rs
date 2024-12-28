@@ -97,7 +97,9 @@ pub struct XmacStandardMaterialLayer {
 }
 
 #[repr(u8)]
-#[derive(Debug, Deserialize, Serialize, IntoPrimitive, TryFromPrimitive, Clone, Copy)]
+#[derive(
+    Debug, Deserialize, Serialize, IntoPrimitive, TryFromPrimitive, Clone, Copy, PartialEq, Eq,
+)]
 pub enum XmacMaterialLayerType {
     Unknown = 0,
     Ambient = 1,
@@ -194,5 +196,12 @@ impl XmacStdMaterial {
                 Ok(None)
             }
         }
+    }
+
+    pub fn get_layer_by_type(
+        &self,
+        ty: XmacMaterialLayerType,
+    ) -> Option<&XmacStandardMaterialLayer> {
+        self.layers.iter().find(|l| l.ty == ty)
     }
 }

@@ -16,7 +16,12 @@
 
 pub mod chunks;
 
-use chunks::{mesh::XmacMesh, nodes::XmacNodes, XmacChunk};
+use chunks::{
+    material::XmacStdMaterial,
+    mesh::XmacMesh,
+    nodes::{XmacNodeId, XmacNodes},
+    XmacChunk,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -151,17 +156,44 @@ impl XmacFile {
         }
         self.chunks.iter().filter_map(get_mesh_chunk).collect()
     }
+
+    pub fn get_mesh_chunk<'a>(&'a self, node_id: XmacNodeId) -> Option<&'a XmacMesh> {
+        let get_mesh_chunk = |chunk: &'a XmacChunk| -> Option<&'a XmacMesh> {
+            if let XmacChunk::Mesh(mesh) = chunk {
+                if mesh.node_id == node_id {
+                    Some(mesh)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+        self.chunks.iter().find_map(get_mesh_chunk)
+    }
+
+    pub fn get_material_chunks(&self) -> Vec<&XmacStdMaterial> {
+        fn get_material_chunk(chunk: &XmacChunk) -> Option<&XmacStdMaterial> {
+            if let XmacChunk::StdMaterial(mat) = chunk {
+                Some(mat)
+            } else {
+                None
+            }
+        }
+        self.chunks.iter().filter_map(get_material_chunk).collect()
+    }
 }
 
 /// XMAC Strings store their length in (endianness-affected) u32
 fn read_xmac_str<R: ArchiveReadTarget>(src: &mut R, big_endian: bool) -> Result<String> {
-    let len = read_u32_endian(src, big_endian)? as usize;
+    let len = read_u32_endian(src, big_endian)?;
     if len > 255 {
         return Err(Error::InvalidStructure(format!(
             "String @{:x} is supposedly {len} bytes",
             src.stream_position()?
         )));
     }
+    let len = len as usize;
     let mut str_buf = vec![0; len];
     src.read_exact(&mut str_buf)?;
 

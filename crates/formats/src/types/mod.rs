@@ -393,6 +393,14 @@ impl Vector3 {
         write_f32(dst, self.z)?;
         Ok(())
     }
+    /// Assumes Y-Up, flips Z to go from LHS to RHS or back
+    pub fn to_otherhanded(&self) -> Self {
+        Self {
+            x: self.x,
+            y: self.y,
+            z: -self.z,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -426,6 +434,25 @@ impl Vector4 {
         write_f32(dst, self.z)?;
         write_f32(dst, self.w)?;
         Ok(())
+    }
+    /// Assumes Y-Up, flips Z to go from LHS to RHS or back
+    pub fn to_otherhanded(&self) -> Self {
+        Self {
+            x: self.x,
+            y: self.y,
+            z: -self.z,
+            w: self.w,
+        }
+    }
+}
+
+impl From<&Vector4> for Vector3 {
+    fn from(value: &Vector4) -> Self {
+        Vector3 {
+            x: value.x,
+            y: value.y,
+            z: value.z,
+        }
     }
 }
 

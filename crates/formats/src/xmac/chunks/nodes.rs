@@ -32,7 +32,8 @@ pub struct XmacNode {
     pub parent_idx: Option<usize>,
     pub child_count: u32,
     pub flags: XmacNodeFlags,
-    pub unknown4: f32,
+    pub unknown4: [u8; 3],
+    pub unknown5: f32,
     pub oriented_bounding_box: Matrix,
 }
 
@@ -79,17 +80,18 @@ impl XmacNodes {
                     let child_count = read_u32_endian(src, big_endian)?;
 
                     let flags = read_u8(src)?;
-                    let flags = XmacNodeFlags::from_bits(flags).ok_or(Error::EnumUnparsable(
-                        format!("Parsing XmacNodeFlags failed, invalid value {flags:02x}"),
-                    ))?;
+                    let flags = XmacNodeFlags::from_bits(flags).ok_or_else(|| {
+                        Error::EnumUnparsable(format!(
+                            "Parsing XmacNodeFlags failed, invalid value {flags:02x}@{:x}",
+                            src.stream_position().unwrap_or_default()
+                        ))
+                    })?;
 
-                    for _idx in 0..3 {
-                        let pad = read_u8(src)?;
-                        assert_eq!(pad, 0);
-                    }
+                    let mut unknown4 = [0; 3];
+                    src.read_exact(&mut unknown4)?;
 
                     // might be the other way around:
-                    let unknown4 = read_f32_endian(src, big_endian)?;
+                    let unknown5 = read_f32_endian(src, big_endian)?;
                     let oriented_bounding_box = Matrix::load(src)?;
 
                     let node_name = read_xmac_str(src, big_endian)?;
@@ -106,6 +108,7 @@ impl XmacNodes {
                         child_count,
                         flags,
                         unknown4,
+                        unknown5,
                         oriented_bounding_box,
                     });
                 }

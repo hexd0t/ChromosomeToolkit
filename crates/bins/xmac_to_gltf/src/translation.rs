@@ -11,6 +11,7 @@ use formats::{
     types::{Vector2, Vector3, Vector4},
     xmac::{
         chunks::{
+            material::{XmacLayerBlendMode, XmacMaterialLayerType, XmacStandardMaterialLayer},
             mesh::{XmacMesh, XmacMeshAttrib, XmacMeshAttribLayer, XmacMeshSubmesh},
             skinning_info::XmacSkinningInfo,
             XmacChunk,
@@ -19,15 +20,27 @@ use formats::{
     },
 };
 use gltf::json::{
-    mesh::Primitive as GltfPrimitive, validation::Checked::Valid as GltfValid,
-    Accessor as GltfAccessor, Buffer as GltfBuffer, Index as GltfIndex, Mesh as GltfMesh,
-    Node as GltfNode, Root as GltfRoot, Skin as GltfSkin,
+    extensions::material::{IndexOfRefraction, Ior, Material, Specular, SpecularFactor},
+    image::MimeType,
+    material::{EmissiveFactor, NormalTexture, PbrMetallicRoughness, StrengthFactor},
+    mesh::Primitive as GltfPrimitive,
+    texture::Info,
+    validation::Checked::Valid as GltfValid,
+    Accessor as GltfAccessor, Buffer as GltfBuffer, Image, Index as GltfIndex,
+    Material as GltfMaterial, Mesh as GltfMesh, Node as GltfNode, Root as GltfRoot,
+    Skin as GltfSkin, Texture,
 };
 
 pub fn xmac_to_gltf(input: &XmacFile, src_filepath: &str) -> Result<GltfRoot> {
     let mut output = GltfRoot::default();
 
+    output.extensions_used.push("KHR_materials_ior".to_string());
+    output
+        .extensions_used
+        .push("KHR_materials_specular".to_string());
+
     translate_nodes(input, &mut output)?;
+    translate_materials(input, &mut output)?;
     translate_meshes(input, &mut output, src_filepath)?;
     translate_skinning(input, &mut output, src_filepath)?;
 
@@ -37,13 +50,7 @@ pub fn xmac_to_gltf(input: &XmacFile, src_filepath: &str) -> Result<GltfRoot> {
 fn translate_nodes(input: &XmacFile, output: &mut GltfRoot) -> Result<()> {
     if let Some(nodes) = input.get_nodes_chunk() {
         for (node_idx, node) in nodes.into_iter().enumerate() {
-            let mut scale = if node.parent_idx.is_none() {
-                let scale = node.local_scale.clone();
-                //scale.z *= -1.0; //Flip Z-Axis for root nodes to reflect LHS vs RHS
-                scale
-            } else {
-                node.local_scale.clone()
-            };
+            let mut scale = node.local_scale.clone();
             //for some reason, scale is inverted (maybe only when multiply-order == 1?):
             scale.x = 1.0 / scale.x;
             scale.y = 1.0 / scale.y;
@@ -122,7 +129,7 @@ fn translate_meshes(input: &XmacFile, output: &mut GltfRoot, src_filepath: &str)
                 extensions: None,
                 extras: None,
                 indices: Some(indices),
-                material: None, // ToDo
+                material: Some(GltfIndex::new(submesh.material_idx)), //Materials are exported 1:1, so their idx is stable
                 mode: GltfValid(gltf::mesh::Mode::Triangles),
                 targets: None,
             };
@@ -412,26 +419,11 @@ fn translate_skinning<'a>(
     }
     for skin in input.chunks.iter().filter_map(get_skinning_chunk) {
         let node_id = skin.node_id;
-        let get_mesh_chunk = |chunk: &'a XmacChunk| -> Option<&'a XmacMesh> {
-            if let XmacChunk::Mesh(mesh) = chunk {
-                if mesh.node_id == node_id {
-                    Some(mesh)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        };
-        let skin_mesh = input
-            .chunks
-            .iter()
-            .find_map(get_mesh_chunk)
-            .ok_or_else(|| {
-                ConvError::MandatoryDataMissing(format!(
-                    "Skinning Info for {node_id:?} has no Mesh data!"
-                ))
-            })?;
+        let skin_mesh = input.get_mesh_chunk(node_id).ok_or_else(|| {
+            ConvError::MandatoryDataMissing(format!(
+                "Skinning Info for {node_id:?} is missing Mesh data!"
+            ))
+        })?;
         let gltf_node = &output.nodes[node_id.0 as usize];
         let skin_name = gltf_node
             .name
@@ -439,45 +431,7 @@ fn translate_skinning<'a>(
             .map(|node_name| format!("{node_name}_skin",))
             .unwrap_or_else(|| format!("skin_{}", node_id.0));
 
-        let mut joints = skin
-            .influences
-            .iter()
-            .map(|inf| inf.node_idx)
-            .collect::<Vec<_>>();
-        joints.sort();
-        joints.dedup();
-
-        let nodes = input.get_nodes_chunk().unwrap();
-        let mut idx = 0;
-        while idx < joints.len() {
-            let mut joint_node_idx = joints[idx];
-            loop {
-                let joint_node = &nodes.nodes[joint_node_idx as usize];
-                if let Some(parent_id) = joint_node.parent_idx {
-                    let parent_id = parent_id as u16;
-                    if let Err(insert_loc) = joints.binary_search(&parent_id) {
-                        joint_node_idx = parent_id;
-                        joints.insert(insert_loc, joint_node_idx);
-                        idx += 1;
-                    } else {
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
-            idx += 1;
-        }
-
-        let node_to_joint_idx: HashMap<u16, u16> = joints
-            .iter()
-            .enumerate()
-            .map(|(joint_idx, node_idx)| (*node_idx, joint_idx as u16))
-            .collect();
-        let joints = joints
-            .into_iter()
-            .map(|bone_node_id| GltfIndex::new(bone_node_id as u32))
-            .collect::<Vec<_>>();
+        let (node_to_joint_idx, joints) = calculate_relevant_joint_ids(input, skin);
 
         let gltf_skin = GltfSkin {
             extensions: None,
@@ -517,6 +471,58 @@ fn translate_skinning<'a>(
         }
     }
     Ok(())
+}
+
+fn calculate_relevant_joint_ids(
+    input: &XmacFile,
+    skin: &XmacSkinningInfo,
+) -> (HashMap<u16, u16>, Vec<GltfIndex<GltfNode>>) {
+    // First, look at all joint node_idxs referenced in the skin, sort and deduplicate them:
+    let mut joints = skin
+        .influences
+        .iter()
+        .map(|inf| inf.node_idx)
+        .collect::<Vec<_>>();
+    joints.sort();
+    joints.dedup();
+
+    // There might be intermediate joints which aren't referred to by geometry,
+    // but are still part of this skeleton:
+    let nodes = input.get_nodes_chunk().unwrap();
+    let mut idx = 0;
+    // for all joints:
+    while idx < joints.len() {
+        let mut joint_node_idx = joints[idx];
+        // if we find missing joints, follow the chain until the parent is part of the list again
+        // (or it is a root node):
+        loop {
+            let joint_node = &nodes.nodes[joint_node_idx as usize];
+            if let Some(parent_id) = joint_node.parent_idx {
+                let parent_id = parent_id as u16;
+                if let Err(insert_loc) = joints.binary_search(&parent_id) {
+                    joint_node_idx = parent_id;
+                    joints.insert(insert_loc, joint_node_idx);
+                    idx += 1;
+                } else {
+                    break; // parent is part of list already
+                }
+            } else {
+                break; // is root
+            }
+        }
+        idx += 1;
+    }
+
+    let node_to_joint_idx: HashMap<u16, u16> = joints
+        .iter()
+        .enumerate()
+        .map(|(joint_idx, node_idx)| (*node_idx, joint_idx as u16))
+        .collect();
+    let joints = joints
+        .into_iter()
+        .map(|bone_node_id| GltfIndex::new(bone_node_id as u32))
+        .collect::<Vec<_>>();
+    (node_to_joint_idx, joints)
 }
 
 fn create_skin_buffer(
@@ -634,4 +640,128 @@ fn create_skin_buffer(
     buffer_file.flush()?;
 
     Ok((gltf_joints, gltf_weights))
+}
+
+fn translate_materials(input: &XmacFile, output: &mut GltfRoot) -> Result<()> {
+    for material in input.get_material_chunks() {
+        let diffuse_layer = material
+            .get_layer_by_type(XmacMaterialLayerType::Diffuse)
+            .unwrap();
+        let specular_layer = material.get_layer_by_type(XmacMaterialLayerType::Bump);
+        let bump_layer = material.get_layer_by_type(XmacMaterialLayerType::Specular);
+
+        let gltf_diffuse_tex =
+            xmac_mat_layer_to_texture(format!("{}_diffuse", material.name), diffuse_layer, output);
+
+        let specular = if let Some(specular_layer) = specular_layer {
+            let tex = xmac_mat_layer_to_texture(
+                format!("{}_specular", material.name),
+                specular_layer,
+                output,
+            );
+            Some(Specular {
+                specular_factor: SpecularFactor(material.shine_strength),
+                specular_texture: Some(Info {
+                    index: tex,
+                    tex_coord: 0,
+                    extensions: None,
+                    extras: None,
+                }),
+                // specular_color_factor: SpecularColorFactor(
+                //     Into::<Vector3>::into(&material.specular_color).into(),
+                // ),
+                specular_color_texture: Some(Info {
+                    index: tex,
+                    tex_coord: 0,
+                    extensions: None,
+                    extras: None,
+                }),
+                ..Default::default()
+            })
+        } else {
+            None
+        };
+
+        let normal_texture = if let Some(bump_layer) = bump_layer {
+            Some(NormalTexture {
+                index: xmac_mat_layer_to_texture(
+                    format!("{}_normal", material.name),
+                    bump_layer,
+                    output,
+                ),
+                scale: 1.0,
+                tex_coord: 0,
+                extensions: None,
+                extras: None,
+            })
+        } else {
+            None
+        };
+
+        let alpha_mode = match diffuse_layer.blend_mode {
+            XmacLayerBlendMode::None => gltf::material::AlphaMode::Opaque,
+            XmacLayerBlendMode::Over => gltf::material::AlphaMode::Blend,
+            other => {
+                println!("Warn: Blend Mode {other:?} is not supported in Gltf");
+                gltf::material::AlphaMode::Blend
+            }
+        };
+
+        let gltf_mat = GltfMaterial {
+            alpha_mode: GltfValid(alpha_mode),
+            double_sided: material.double_sided,
+            name: Some(material.name.clone()),
+            pbr_metallic_roughness: PbrMetallicRoughness {
+                //base_color_factor: todo!(),
+                base_color_texture: Some(Info {
+                    index: gltf_diffuse_tex,
+                    tex_coord: 0,
+                    extensions: None,
+                    extras: None,
+                }),
+                metallic_factor: StrengthFactor(0.0),
+                //roughness_factor: todo!(),
+                //metallic_roughness_texture: todo!(),
+                ..PbrMetallicRoughness::default()
+            },
+            emissive_factor: EmissiveFactor(Into::<Vector3>::into(&material.emissive_color).into()),
+            normal_texture,
+            extensions: Some(Material {
+                specular,
+                ior: Some(Ior {
+                    ior: IndexOfRefraction(material.refraction_index),
+                    extras: None,
+                }),
+            }),
+            extras: None,
+            ..Default::default()
+        };
+        output.push(gltf_mat);
+    }
+    Ok(())
+}
+
+fn xmac_mat_layer_to_texture(
+    name: String,
+    layer: &XmacStandardMaterialLayer,
+    output: &mut GltfRoot,
+) -> GltfIndex<Texture> {
+    let image = Image {
+        buffer_view: None,
+        mime_type: Some(MimeType("image/png".into())),
+        name: Some(format!("{name}_img")),
+        uri: Some(format!("{}.png", layer.texture)), //"testtex.png".into()), //
+        extensions: None,
+        extras: None,
+    };
+    let image = output.push(image);
+    let tex = Texture {
+        name: Some(name),
+        sampler: None,
+        source: image,
+        extensions: None,
+        extras: None,
+    };
+    // ToDo: actually export material texture to png there
+    output.push(tex)
 }

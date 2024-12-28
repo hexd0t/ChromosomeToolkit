@@ -1,5 +1,6 @@
 use formats::{archive::PakFile, lrent::LrentFile};
 use std::collections::VecDeque;
+use std::fs::File;
 use std::io::{BufReader, Write};
 use std::{env, ffi::OsString, path::Path};
 
@@ -33,8 +34,8 @@ fn main() {
             continue;
         }
 
-        let in_data = std::fs::File::open(path).unwrap();
-        let in_data = std::io::BufReader::new(in_data);
+        let in_data = File::open(path).unwrap();
+        let in_data = BufReader::new(in_data);
 
         let lrent: LrentFile = match serde_json::from_reader(in_data) {
             Ok(r) => r,
@@ -90,7 +91,7 @@ fn main() {
         //     println!("exists");
         //     continue;
         // }
-        let mut out_file = std::fs::File::create(out_path).expect("Unable to open output file");
+        let mut out_file = File::create(out_path).expect("Unable to open output file");
         match arch.save(&mut out_file) {
             Ok(_) => {}
             Err(e) => {
