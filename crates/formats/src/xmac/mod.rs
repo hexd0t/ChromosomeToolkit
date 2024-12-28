@@ -16,6 +16,7 @@
 
 pub mod chunks;
 
+use chunks::{mesh::XmacMesh, nodes::XmacNodes, XmacChunk};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -127,6 +128,28 @@ impl XmacFile {
         }
 
         Ok(chunks)
+    }
+
+    pub fn get_nodes_chunk(&self) -> Option<&XmacNodes> {
+        fn get_nodes_chunk(chunk: &XmacChunk) -> Option<&XmacNodes> {
+            if let XmacChunk::Nodes(nodes) = chunk {
+                Some(nodes)
+            } else {
+                None
+            }
+        }
+        self.chunks.iter().find_map(get_nodes_chunk)
+    }
+
+    pub fn get_mesh_chunks(&self) -> Vec<&XmacMesh> {
+        fn get_mesh_chunk(chunk: &XmacChunk) -> Option<&XmacMesh> {
+            if let XmacChunk::Mesh(mesh) = chunk {
+                Some(mesh)
+            } else {
+                None
+            }
+        }
+        self.chunks.iter().filter_map(get_mesh_chunk).collect()
     }
 }
 

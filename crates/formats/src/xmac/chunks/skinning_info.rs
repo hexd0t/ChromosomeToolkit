@@ -23,17 +23,17 @@ pub struct XmacSkinningInfo {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct SkinInfluence {
-    weight: f32,
-    node_idx: u16,
-    unknown: u16,
+    pub weight: f32,
+    pub node_idx: u16,
+    pub unknown: u16,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TableEntry {
     /// index into SkinningInfo.influences for the NativeVertex at this idx
-    start_idx: u32,
+    pub start_idx: u32,
     /// number of influences for this entry
-    num_elements: u32,
+    pub num_elements: u32,
 }
 
 impl XmacSkinningInfo {
