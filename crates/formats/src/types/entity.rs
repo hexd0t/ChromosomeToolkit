@@ -3,6 +3,7 @@ use std::io::Read;
 use uuid::Uuid;
 
 use super::*;
+use crate::binimport::BinImport;
 use crate::error::*;
 use crate::{archive::*, helpers::*};
 
@@ -17,7 +18,7 @@ pub struct DynamicEntity {
     pub unknown1: u32,
     pub creator: EntityProxy,
 
-    pub local_matrix: Matrix,
+    pub local_matrix: glam::Mat4,
     pub world_bound: BoundingBox,
     pub world_sphere: Sphere,
     pub local_bound: BoundingBox,
@@ -36,7 +37,7 @@ impl DynamicEntity {
         let unknown1 = read_u32(src)?;
         let name = src.read_str()?.to_string();
         println!("name: {name}");
-        let local_matrix = Matrix::load(src)?;
+        let local_matrix = glam::Mat4::load(src)?;
         let world_bound = BoundingBox::load(src)?;
         let world_sphere = Sphere::load(src)?;
         let local_bound = BoundingBox::load(src)?;
@@ -83,7 +84,7 @@ impl DynamicEntity {
 pub struct GeometryEntity {
     pub version: u16,
     pub unknown1: f32,
-    pub geo_matrix: Matrix,
+    pub geo_matrix: glam::Mat4,
     pub geo_bound: BoundingBox,
     pub geo_sphere: Sphere,
     pub alpha: f32,
@@ -96,7 +97,7 @@ impl GeometryEntity {
     pub fn load(src: &mut PakFile) -> Result<Self> {
         let version = read_u16(src)?;
         let unknown1 = if version <= 213 { read_f32(src)? } else { 0.0 };
-        let geo_matrix = Matrix::load(src)?;
+        let geo_matrix = glam::Mat4::load(src)?;
         let geo_bound = BoundingBox::load(src)?;
         let geo_sphere = Sphere::load(src)?;
         let (alpha, view_range, unknown2) = if version >= 213 {

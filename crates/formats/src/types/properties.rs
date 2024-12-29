@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::*;
 use crate::archive::*;
+use crate::binimport::BinImport;
 use crate::error::*;
 use crate::helpers::*;
 
@@ -51,23 +52,23 @@ impl Property {
             }
             "bCVector2" => {
                 assert_eq!(data_len, 2 * 4);
-                PropData::Vector2(Vector2::load(src)?)
+                PropData::Vector2(Vec2::load(src)?)
             }
             "bCVector" => {
                 assert_eq!(data_len, 3 * 4);
-                PropData::Vector3(Vector3::load(src)?)
+                PropData::Vector3(Vec3::load(src)?)
             }
             "bCVector4" => {
                 assert_eq!(data_len, 4 * 4);
-                PropData::Vector4(Vector4::load(src)?)
+                PropData::Vector4(Vec4::load(src)?)
             }
             "bCMatrix" => {
                 assert_eq!(data_len, 4 * 4 * 4);
-                PropData::Matrix(Matrix::load(src)?)
+                PropData::Matrix(Mat4::load(src)?)
             }
             "bCQuaternion" => {
                 assert_eq!(data_len, 4 * 4);
-                PropData::Quaternion(Quaternion::load(src)?)
+                PropData::Quaternion(Quat::load(src)?)
             }
             "bCGuid" => {
                 assert_eq!(data_len, 16 + 4);
@@ -1097,11 +1098,11 @@ pub enum PropData {
     Float(f32),
     Long(u32),
     Char(u8),
-    Vector2(Vector2),
-    Vector3(Vector3),
-    Vector4(Vector4),
-    Quaternion(Quaternion),
-    Matrix(Matrix),
+    Vector2(Vec2),
+    Vector3(Vec3),
+    Vector4(Vec4),
+    Quaternion(Quat),
+    Matrix(glam::Mat4),
     Guid(PropertyId),
     String(String),
     ImageOrMaterialResourceString(String),

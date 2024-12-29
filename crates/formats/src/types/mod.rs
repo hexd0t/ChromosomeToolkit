@@ -4,18 +4,18 @@ pub mod properties;
 pub mod property_set;
 pub mod template;
 
-#[cfg(feature = "gltf")]
-pub mod gltf;
-
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use uuid::Uuid;
 
+use crate::binimport::BinImport;
 use crate::error::*;
 use crate::{archive::*, helpers::*};
 use entity::*;
 use object::*;
 use property_set::*;
+
+pub use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -198,15 +198,15 @@ impl EntityDynamicContext {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct BoundingBox {
-    pub max: Vector3,
-    pub min: Vector3,
+    pub max: Vec3,
+    pub min: Vec3,
 }
 
 impl BoundingBox {
     pub fn load<R: ArchiveReadTarget>(src: &mut R) -> Result<Self> {
         Ok(Self {
-            max: Vector3::load(src)?,
-            min: Vector3::load(src)?,
+            max: Vec3::load(src)?,
+            min: Vec3::load(src)?,
         })
     }
     pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<()> {
@@ -219,87 +219,19 @@ impl BoundingBox {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Sphere {
     pub radius: f32,
-    pub pos: Vector3,
+    pub pos: Vec3,
 }
 
 impl Sphere {
     pub fn load<R: ArchiveReadTarget>(src: &mut R) -> Result<Self> {
         Ok(Self {
             radius: read_f32(src)?,
-            pos: Vector3::load(src)?,
+            pos: Vec3::load(src)?,
         })
     }
     pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<()> {
         write_f32(dst, self.radius)?;
         self.pos.save(dst)?;
-        Ok(())
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Matrix {
-    pub m11: f32,
-    pub m12: f32,
-    pub m13: f32,
-    pub m14: f32,
-    pub m21: f32,
-    pub m22: f32,
-    pub m23: f32,
-    pub m24: f32,
-    pub m31: f32,
-    pub m32: f32,
-    pub m33: f32,
-    pub m34: f32,
-    pub m41: f32,
-    pub m42: f32,
-    pub m43: f32,
-    pub m44: f32,
-}
-
-impl Matrix {
-    pub fn load<R: ArchiveReadTarget>(src: &mut R) -> Result<Self> {
-        Ok(Self {
-            m11: read_f32(src)?,
-            m12: read_f32(src)?,
-            m13: read_f32(src)?,
-            m14: read_f32(src)?,
-
-            m21: read_f32(src)?,
-            m22: read_f32(src)?,
-            m23: read_f32(src)?,
-            m24: read_f32(src)?,
-
-            m31: read_f32(src)?,
-            m32: read_f32(src)?,
-            m33: read_f32(src)?,
-            m34: read_f32(src)?,
-
-            m41: read_f32(src)?,
-            m42: read_f32(src)?,
-            m43: read_f32(src)?,
-            m44: read_f32(src)?,
-        })
-    }
-    pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<()> {
-        write_f32(dst, self.m11)?;
-        write_f32(dst, self.m12)?;
-        write_f32(dst, self.m13)?;
-        write_f32(dst, self.m14)?;
-
-        write_f32(dst, self.m21)?;
-        write_f32(dst, self.m22)?;
-        write_f32(dst, self.m23)?;
-        write_f32(dst, self.m24)?;
-
-        write_f32(dst, self.m31)?;
-        write_f32(dst, self.m32)?;
-        write_f32(dst, self.m33)?;
-        write_f32(dst, self.m34)?;
-
-        write_f32(dst, self.m41)?;
-        write_f32(dst, self.m42)?;
-        write_f32(dst, self.m43)?;
-        write_f32(dst, self.m44)?;
         Ok(())
     }
 }
@@ -334,158 +266,6 @@ impl EntityProxy {
             let valid = 0;
             write_u8(dst, valid)?;
         }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Vector2 {
-    pub x: f32,
-    pub y: f32,
-}
-
-impl Vector2 {
-    pub fn load<R: ArchiveReadTarget>(src: &mut R) -> Result<Self> {
-        Ok(Self {
-            x: read_f32(src)?,
-            y: read_f32(src)?,
-        })
-    }
-    pub fn load_endian<R: ArchiveReadTarget>(src: &mut R, big_endian: bool) -> Result<Self> {
-        Ok(Self {
-            x: read_f32_endian(src, big_endian)?,
-            y: read_f32_endian(src, big_endian)?,
-        })
-    }
-
-    pub fn save<W: Write>(&self, dst: &mut W) -> std::io::Result<()> {
-        write_f32(dst, self.x)?;
-        write_f32(dst, self.y)?;
-        Ok(())
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct Vector3 {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-}
-
-impl Vector3 {
-    pub fn load<R: ArchiveReadTarget>(src: &mut R) -> Result<Self> {
-        Ok(Self {
-            x: read_f32(src)?,
-            y: read_f32(src)?,
-            z: read_f32(src)?,
-        })
-    }
-    pub fn load_endian<R: ArchiveReadTarget>(src: &mut R, big_endian: bool) -> Result<Self> {
-        Ok(Self {
-            x: read_f32_endian(src, big_endian)?,
-            y: read_f32_endian(src, big_endian)?,
-            z: read_f32_endian(src, big_endian)?,
-        })
-    }
-    pub fn save<W: Write>(&self, dst: &mut W) -> std::io::Result<()> {
-        write_f32(dst, self.x)?;
-        write_f32(dst, self.y)?;
-        write_f32(dst, self.z)?;
-        Ok(())
-    }
-    /// Assumes Y-Up, flips Z to go from LHS to RHS or back
-    pub fn to_otherhanded(&self) -> Self {
-        Self {
-            x: self.x,
-            y: self.y,
-            z: -self.z,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Vector4 {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-    pub w: f32,
-}
-
-impl Vector4 {
-    pub fn load<R: ArchiveReadTarget>(src: &mut R) -> Result<Self> {
-        Ok(Self {
-            x: read_f32(src)?,
-            y: read_f32(src)?,
-            z: read_f32(src)?,
-            w: read_f32(src)?,
-        })
-    }
-    pub fn load_endian<R: ArchiveReadTarget>(src: &mut R, big_endian: bool) -> Result<Self> {
-        Ok(Self {
-            x: read_f32_endian(src, big_endian)?,
-            y: read_f32_endian(src, big_endian)?,
-            z: read_f32_endian(src, big_endian)?,
-            w: read_f32_endian(src, big_endian)?,
-        })
-    }
-    pub fn save<W: Write>(&self, dst: &mut W) -> std::io::Result<()> {
-        write_f32(dst, self.x)?;
-        write_f32(dst, self.y)?;
-        write_f32(dst, self.z)?;
-        write_f32(dst, self.w)?;
-        Ok(())
-    }
-    /// Assumes Y-Up, flips Z to go from LHS to RHS or back
-    pub fn to_otherhanded(&self) -> Self {
-        Self {
-            x: self.x,
-            y: self.y,
-            z: -self.z,
-            w: self.w,
-        }
-    }
-}
-
-impl From<&Vector4> for Vector3 {
-    fn from(value: &Vector4) -> Self {
-        Vector3 {
-            x: value.x,
-            y: value.y,
-            z: value.z,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct Quaternion {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-    pub w: f32,
-}
-
-impl Quaternion {
-    pub fn load<R: ArchiveReadTarget>(src: &mut R) -> Result<Self> {
-        Ok(Self {
-            x: read_f32(src)?,
-            y: read_f32(src)?,
-            z: read_f32(src)?,
-            w: read_f32(src)?,
-        })
-    }
-    pub fn load_endian<R: ArchiveReadTarget>(src: &mut R, big_endian: bool) -> Result<Self> {
-        Ok(Self {
-            x: read_f32_endian(src, big_endian)?,
-            y: read_f32_endian(src, big_endian)?,
-            z: read_f32_endian(src, big_endian)?,
-            w: read_f32_endian(src, big_endian)?,
-        })
-    }
-    pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<()> {
-        write_f32(dst, self.x)?;
-        write_f32(dst, self.y)?;
-        write_f32(dst, self.z)?;
-        write_f32(dst, self.w)?;
         Ok(())
     }
 }

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use super::{AccessorPropertyObject, DateTime, Quaternion, Vector3};
+use super::{AccessorPropertyObject, DateTime, Quat, Vec3};
+use crate::binimport::BinImport;
 use crate::error::*;
 use crate::types::PropertyId;
 use crate::{archive::*, helpers::*};
@@ -87,8 +88,8 @@ pub struct TemplateEntity {
     pub unknown1: bool,
     pub unknown2: f32,
     pub unknown3: f32,
-    pub unknown5: Vector3,
-    pub unknown6: Quaternion,
+    pub unknown5: Vec3,
+    pub unknown6: Quat,
     pub unknown7: bool,
     pub unknown8: bool,
     pub unknown9: bool,
@@ -147,8 +148,8 @@ impl TemplateEntity {
         }
 
         let name = src.read_str()?.to_string();
-        let unknown5 = Vector3::load(src)?;
-        let unknown6 = Quaternion::load(src)?;
+        let unknown5 = Vec3::load(src)?;
+        let unknown6 = Quat::load(src)?;
         //unknown4.normalize()
 
         if version < 213 {

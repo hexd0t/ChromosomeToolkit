@@ -7,8 +7,9 @@ use std::{
 
 use super::{ConvError, Result};
 use formats::{
+    binimport::BinImport,
     helpers::{write_f32, write_u16},
-    types::{Vector2, Vector3, Vector4},
+    types::{Mat4, Vec2, Vec3, Vec4},
     xmac::{
         chunks::{
             material::{XmacLayerBlendMode, XmacMaterialLayerType, XmacStandardMaterialLayer},
@@ -56,11 +57,12 @@ fn translate_nodes(input: &XmacFile, output: &mut GltfRoot) -> Result<()> {
             scale.y = 1.0 / scale.y;
             scale.z = 1.0 / scale.z;
 
+            let transform = Mat4::from_rotation_translation(node.rotation, node.local_pos)
+                * Mat4::from_scale(scale);
+
             let gltf_node = GltfNode {
                 name: Some(node.name.clone()),
-                rotation: Some(node.rotation.clone().into()),
-                translation: Some(node.local_pos.clone().into()),
-                scale: Some(scale.into()),
+                matrix: Some(transform.to_cols_array()),
 
                 ..GltfNode::default()
             };
@@ -150,7 +152,7 @@ fn translate_meshes(input: &XmacFile, output: &mut GltfRoot, src_filepath: &str)
     Ok(())
 }
 
-fn bounding_box(positions: &[Vector3]) -> ([f32; 3], [f32; 3]) {
+fn bounding_box(positions: &[Vec3]) -> ([f32; 3], [f32; 3]) {
     let mut min = [f32::MAX, f32::MAX, f32::MAX];
     let mut max = [f32::MIN, f32::MIN, f32::MIN];
 
@@ -176,28 +178,28 @@ fn create_mesh_buffer(
 )> {
     use gltf::json::validation::USize64;
 
-    fn get_position_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vector3>> {
+    fn get_position_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vec3>> {
         if let XmacMeshAttrib::Positions(val) = &attrib.attribs {
             Some(val)
         } else {
             None
         }
     }
-    fn get_normal_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vector3>> {
+    fn get_normal_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vec3>> {
         if let XmacMeshAttrib::Normals(val) = &attrib.attribs {
             Some(val)
         } else {
             None
         }
     }
-    fn get_tangent_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vector4>> {
+    fn get_tangent_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vec4>> {
         if let XmacMeshAttrib::Tangents(val) = &attrib.attribs {
             Some(val)
         } else {
             None
         }
     }
-    fn get_uv_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vector2>> {
+    fn get_uv_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vec2>> {
         if let XmacMeshAttrib::UvCoords(val) = &attrib.attribs {
             Some(val)
         } else {
@@ -231,10 +233,10 @@ fn create_mesh_buffer(
         println!("Warning: xmac has additional mesh attrib layers which will not be exported!");
     }
 
-    const POSITION_SIZE: usize = std::mem::size_of::<Vector3>();
-    const NORMAL_SIZE: usize = std::mem::size_of::<Vector3>();
-    const TANGENT_SIZE: usize = std::mem::size_of::<Vector4>();
-    const UV_SIZE: usize = std::mem::size_of::<Vector2>();
+    const POSITION_SIZE: usize = std::mem::size_of::<Vec3>();
+    const NORMAL_SIZE: usize = std::mem::size_of::<Vec3>();
+    const TANGENT_SIZE: usize = std::mem::size_of::<Vec4>();
+    const UV_SIZE: usize = std::mem::size_of::<Vec2>();
     const VERTEX_SIZE: usize = POSITION_SIZE + NORMAL_SIZE + TANGENT_SIZE + UV_SIZE;
 
     let vertex_count = mesh_positions.len();
@@ -433,10 +435,23 @@ fn translate_skinning<'a>(
 
         let (node_to_joint_idx, joints) = calculate_relevant_joint_ids(input, skin);
 
+        let inverse_binds = calculate_inv_binds(output, &node_to_joint_idx, &joints);
+
+        let skin_buffer_path =
+            OsString::from(src_filepath.replace("._xmac", &format!("._xmac.{}.bin", &skin_name)));
+        let (gltf_inversebinds, gltf_joints, gltf_weights) = create_skin_buffer(
+            skin,
+            skin_mesh,
+            node_to_joint_idx,
+            inverse_binds,
+            output,
+            &Path::new(&skin_buffer_path),
+        )?;
+
         let gltf_skin = GltfSkin {
             extensions: None,
             extras: None,
-            inverse_bind_matrices: None,
+            inverse_bind_matrices: Some(gltf_inversebinds),
             joints,
             name: None,
             skeleton: None,
@@ -444,16 +459,6 @@ fn translate_skinning<'a>(
         let gltf_skin = output.push(gltf_skin);
         let gltf_node = &mut output.nodes[node_id.0 as usize];
         gltf_node.skin = Some(gltf_skin);
-
-        let mesh_buffer_path =
-            OsString::from(src_filepath.replace("._xmac", &format!("._xmac.{}.bin", &skin_name)));
-        let (gltf_joints, gltf_weights) = create_skin_buffer(
-            skin,
-            skin_mesh,
-            node_to_joint_idx,
-            output,
-            &Path::new(&mesh_buffer_path),
-        )?;
 
         let gltf_mesh = output
             .meshes
@@ -471,6 +476,29 @@ fn translate_skinning<'a>(
         }
     }
     Ok(())
+}
+
+fn calculate_inv_binds(
+    output: &mut GltfRoot,
+    node_to_joint_idx: &HashMap<u16, u16>,
+    joints: &Vec<GltfIndex<GltfNode>>,
+) -> Vec<Mat4> {
+    let mut inverse_binds = vec![Mat4::IDENTITY; joints.len()];
+    for (joint_idx, joint_node_idx) in joints.iter().enumerate() {
+        let joint_node = &output.nodes[joint_node_idx.value()];
+        inverse_binds[joint_idx] = Mat4::from_cols_array(joint_node.matrix.as_ref().unwrap())
+            .inverse()
+            * inverse_binds[joint_idx];
+        for child_joint in joint_node
+            .children
+            .iter()
+            .flat_map(|c| c.iter())
+            .filter_map(|c_node_id| node_to_joint_idx.get(&(c_node_id.value() as u16)))
+        {
+            inverse_binds[*child_joint as usize] = inverse_binds[joint_idx];
+        }
+    }
+    inverse_binds
 }
 
 fn calculate_relevant_joint_ids(
@@ -529,9 +557,14 @@ fn create_skin_buffer(
     skin: &XmacSkinningInfo,
     skin_mesh: &XmacMesh,
     node_to_joint_idx: HashMap<u16, u16>,
+    inverse_binds: Vec<Mat4>,
     output: &mut GltfRoot,
     buffer_path: &Path,
-) -> Result<(GltfIndex<GltfAccessor>, GltfIndex<GltfAccessor>)> {
+) -> Result<(
+    GltfIndex<GltfAccessor>,
+    GltfIndex<GltfAccessor>,
+    GltfIndex<GltfAccessor>,
+)> {
     use gltf::json::validation::USize64;
     fn get_orig_vert_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<u32>> {
         if let XmacMeshAttrib::OriginalVertexNumbers(val) = &attrib.attribs {
@@ -551,10 +584,14 @@ fn create_skin_buffer(
     const JOINT_IDX_SIZE: usize = std::mem::size_of::<u16>() * 4;
     const JOINT_WEIGHT_SIZE: usize = std::mem::size_of::<f32>() * 4;
     const SKIN_ENTRY_SIZE: usize = JOINT_IDX_SIZE + JOINT_WEIGHT_SIZE;
+    const INVERSE_BIND_SIZE: usize = std::mem::size_of::<Mat4>();
 
+    let joint_count = node_to_joint_idx.len();
     let vertex_count = vertex_to_orig_vertex.len();
 
-    let buffer_length = vertex_count * SKIN_ENTRY_SIZE;
+    let joints_length = joint_count * INVERSE_BIND_SIZE;
+    let vertex_length = vertex_count * SKIN_ENTRY_SIZE;
+    let buffer_length = joints_length + vertex_length;
     let buffer = output.push(GltfBuffer {
         byte_length: USize64::from(buffer_length),
         extensions: Default::default(),
@@ -568,18 +605,46 @@ fn create_skin_buffer(
                 .into_owned(),
         ),
     });
-    let buffer_view = output.push(gltf::json::buffer::View {
+    let joints_buffer_view = output.push(gltf::json::buffer::View {
         buffer,
-        byte_length: USize64::from(buffer_length),
+        byte_length: USize64::from(joints_length),
         byte_offset: None,
+        byte_stride: Some(gltf::json::buffer::Stride(INVERSE_BIND_SIZE)),
+        extensions: Default::default(),
+        extras: Default::default(),
+        name: None,
+        target: Some(GltfValid(gltf::json::buffer::Target::ArrayBuffer)),
+    });
+    let vertex_buffer_view = output.push(gltf::json::buffer::View {
+        buffer,
+        byte_length: USize64::from(vertex_length),
+        byte_offset: Some(USize64::from(joints_length)),
         byte_stride: Some(gltf::json::buffer::Stride(SKIN_ENTRY_SIZE)),
         extensions: Default::default(),
         extras: Default::default(),
         name: None,
         target: Some(GltfValid(gltf::json::buffer::Target::ArrayBuffer)),
     });
+
+    let gltf_inverse_binds = output.push(GltfAccessor {
+        buffer_view: Some(joints_buffer_view.clone()),
+        byte_offset: Some(USize64(0)),
+        count: USize64::from(joint_count),
+        component_type: GltfValid(gltf::json::accessor::GenericComponentType(
+            gltf::json::accessor::ComponentType::F32,
+        )),
+        extensions: Default::default(),
+        extras: Default::default(),
+        type_: GltfValid(gltf::json::accessor::Type::Mat4),
+        min: None,
+        max: None,
+        name: None,
+        normalized: false,
+        sparse: None,
+    });
+
     let gltf_joints = output.push(GltfAccessor {
-        buffer_view: Some(buffer_view.clone()),
+        buffer_view: Some(vertex_buffer_view.clone()),
         byte_offset: Some(USize64(0)),
         count: USize64::from(vertex_count),
         component_type: GltfValid(gltf::json::accessor::GenericComponentType(
@@ -595,7 +660,7 @@ fn create_skin_buffer(
         sparse: None,
     });
     let gltf_weights = output.push(GltfAccessor {
-        buffer_view: Some(buffer_view.clone()),
+        buffer_view: Some(vertex_buffer_view.clone()),
         byte_offset: Some(USize64(JOINT_IDX_SIZE as u64)),
         count: USize64::from(vertex_count),
         component_type: GltfValid(gltf::json::accessor::GenericComponentType(
@@ -613,6 +678,10 @@ fn create_skin_buffer(
 
     let buffer_file = std::fs::File::create(buffer_path)?;
     let mut buffer_file = BufWriter::new(buffer_file);
+
+    for inv_bind in inverse_binds {
+        inv_bind.save(&mut buffer_file)?;
+    }
 
     for (_vertex, orig_vertex) in vertex_to_orig_vertex.iter().enumerate() {
         let lookup = &skin.table_entries[*orig_vertex as usize];
@@ -639,7 +708,7 @@ fn create_skin_buffer(
 
     buffer_file.flush()?;
 
-    Ok((gltf_joints, gltf_weights))
+    Ok((gltf_inverse_binds, gltf_joints, gltf_weights))
 }
 
 fn translate_materials(input: &XmacFile, output: &mut GltfRoot) -> Result<()> {
@@ -668,7 +737,7 @@ fn translate_materials(input: &XmacFile, output: &mut GltfRoot) -> Result<()> {
                     extras: None,
                 }),
                 // specular_color_factor: SpecularColorFactor(
-                //     Into::<Vector3>::into(&material.specular_color).into(),
+                //     Into::<Vec3>::into(&material.specular_color).into(),
                 // ),
                 specular_color_texture: Some(Info {
                     index: tex,
@@ -724,7 +793,7 @@ fn translate_materials(input: &XmacFile, output: &mut GltfRoot) -> Result<()> {
                 //metallic_roughness_texture: todo!(),
                 ..PbrMetallicRoughness::default()
             },
-            emissive_factor: EmissiveFactor(Into::<Vector3>::into(&material.emissive_color).into()),
+            emissive_factor: EmissiveFactor(material.emissive_color.truncate().into()),
             normal_texture,
             extensions: Some(Material {
                 specular,

@@ -102,6 +102,13 @@ pub fn read_f32_endian<R: Read>(r: &mut R, big_endian: bool) -> Result<f32> {
         Ok(f32::from_le_bytes(data))
     }
 }
+pub fn write_f32_endian<W: Write>(w: &mut W, val: f32, big_endian: bool) -> Result<()> {
+    if big_endian {
+        w.write_all(&val.to_be_bytes())
+    } else {
+        w.write_all(&val.to_le_bytes())
+    }
+}
 
 pub mod ser_hex {
     use std::fmt::Write;

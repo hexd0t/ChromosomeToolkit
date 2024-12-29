@@ -6,11 +6,12 @@ use super::nodes::XmacNodeId;
 use super::XmacChunkMeta;
 
 use crate::archive::ArchiveReadTarget;
+use crate::binimport::BinImport;
 use crate::error::*;
 use crate::helpers::*;
-use crate::types::Vector2;
-use crate::types::Vector3;
-use crate::types::Vector4;
+use crate::types::Vec2;
+use crate::types::Vec3;
+use crate::types::Vec4;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct XmacMesh {
@@ -31,29 +32,29 @@ pub struct XmacMeshAttribLayer {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum XmacMeshAttrib {
-    Positions(Vec<Vector3>),
-    Normals(Vec<Vector3>),
-    Tangents(Vec<Vector4>),
-    UvCoords(Vec<Vector2>),
+    Positions(Vec<Vec3>),
+    Normals(Vec<Vec3>),
+    Tangents(Vec<Vec4>),
+    UvCoords(Vec<Vec2>),
     /// Contains a 4-byte RGBA value
     Colors32(Vec<u32>),
     OriginalVertexNumbers(Vec<u32>),
     /// Contains 4 f32 color entries (RGBA)
-    Colors128(Vec<Vector4>),
-    BiTangents(Vec<Vector3>),
+    Colors128(Vec<Vec4>),
+    BiTangents(Vec<Vec3>),
     ClothData(Vec<u32>),
 }
 
 #[repr(u32)]
 #[derive(Debug, Deserialize, Serialize, IntoPrimitive, TryFromPrimitive, Clone, Copy)]
 pub enum XmacMeshAttribLayerType {
-    /// Contains a Vector3
+    /// Contains a Vec3
     Positions = 0,
-    /// Contains a Vector3
+    /// Contains a Vec3
     Normals = 1,
-    /// Contains a Vector4
+    /// Contains a Vec4
     Tangents = 2,
-    /// Contains a Vector2
+    /// Contains a Vec2
     UvCoords = 3,
     /// Contains a 4-byte RGBA value
     Colors32 = 4,
@@ -61,7 +62,7 @@ pub enum XmacMeshAttribLayerType {
     OriginalVertexNumbers = 5,
     /// Contains 4 f32 color entries (RGBA)
     Colors128 = 6,
-    /// Contains a Vector3
+    /// Contains a Vec3
     BiTangents = 7,
     /// Contains a u32
     ClothData = 8,
@@ -201,11 +202,11 @@ impl XmacMeshAttrib {
         src: &mut R,
         big_endian: bool,
         vertices_count: u32,
-    ) -> Result<Vec<Vector2>> {
+    ) -> Result<Vec<Vec2>> {
         let mut attribs = Vec::with_capacity(vertices_count as usize);
 
         for _ver_idx in 0..vertices_count {
-            attribs.push(Vector2::load_endian(src, big_endian)?);
+            attribs.push(Vec2::load_endian(src, big_endian)?);
         }
         Ok(attribs)
     }
@@ -213,11 +214,11 @@ impl XmacMeshAttrib {
         src: &mut R,
         big_endian: bool,
         vertices_count: u32,
-    ) -> Result<Vec<Vector3>> {
+    ) -> Result<Vec<Vec3>> {
         let mut attribs = Vec::with_capacity(vertices_count as usize);
 
         for _ver_idx in 0..vertices_count {
-            attribs.push(Vector3::load_endian(src, big_endian)?);
+            attribs.push(Vec3::load_endian(src, big_endian)?);
         }
         Ok(attribs)
     }
@@ -225,11 +226,11 @@ impl XmacMeshAttrib {
         src: &mut R,
         big_endian: bool,
         vertices_count: u32,
-    ) -> Result<Vec<Vector4>> {
+    ) -> Result<Vec<Vec4>> {
         let mut attribs = Vec::with_capacity(vertices_count as usize);
 
         for _ver_idx in 0..vertices_count {
-            attribs.push(Vector4::load_endian(src, big_endian)?);
+            attribs.push(Vec4::load_endian(src, big_endian)?);
         }
         Ok(attribs)
     }

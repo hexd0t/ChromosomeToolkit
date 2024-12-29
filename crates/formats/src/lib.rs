@@ -1,6 +1,7 @@
 pub mod helpers;
 
 pub mod archive;
+pub mod binimport;
 pub mod error;
 pub mod lrent;
 pub mod tple;

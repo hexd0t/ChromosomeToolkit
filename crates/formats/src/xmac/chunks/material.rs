@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 use super::XmacChunkMeta;
 
 use crate::archive::ArchiveReadTarget;
+use crate::binimport::BinImport;
 use crate::error::*;
 use crate::helpers::*;
-use crate::types::Vector4;
+use crate::types::Vec4;
 use crate::xmac::read_xmac_str;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -15,10 +16,10 @@ pub struct XmacStdMaterial {
     pub name: String,
     pub layers: Vec<XmacStandardMaterialLayer>,
 
-    pub ambient_color: Vector4,
-    pub diffuse_color: Vector4,
-    pub specular_color: Vector4,
-    pub emissive_color: Vector4,
+    pub ambient_color: Vec4,
+    pub diffuse_color: Vec4,
+    pub specular_color: Vec4,
+    pub emissive_color: Vec4,
     pub shine: f32,
     pub shine_strength: f32,
     pub opacity: f32,
@@ -130,10 +131,10 @@ impl XmacStdMaterial {
         println!("Loading STD MATERIAL chunk...");
         match chunk_meta.version {
             2 => {
-                let ambient_color = Vector4::load_endian(src, big_endian)?;
-                let diffuse_color = Vector4::load_endian(src, big_endian)?;
-                let specular_color = Vector4::load_endian(src, big_endian)?;
-                let emissive_color = Vector4::load_endian(src, big_endian)?;
+                let ambient_color = Vec4::load_endian(src, big_endian)?;
+                let diffuse_color = Vec4::load_endian(src, big_endian)?;
+                let specular_color = Vec4::load_endian(src, big_endian)?;
+                let emissive_color = Vec4::load_endian(src, big_endian)?;
                 let shine = read_f32_endian(src, big_endian)?;
                 let shine_strength = read_f32_endian(src, big_endian)?;
                 let opacity = read_f32_endian(src, big_endian)?;

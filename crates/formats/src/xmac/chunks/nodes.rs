@@ -8,9 +8,10 @@ use super::super::read_xmac_str;
 
 use super::XmacChunkMeta;
 use crate::archive::ArchiveReadTarget;
+use crate::binimport::BinImport;
 use crate::error::*;
 use crate::helpers::*;
-use crate::types::{Matrix, Quaternion, Vector2, Vector3, Vector4};
+use crate::types::{Mat4, Quat, Vec2, Vec3, Vec4};
 
 #[derive(Debug, Deserialize, Serialize, Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct XmacNodeId(pub u32);
@@ -23,18 +24,18 @@ pub struct XmacNodes {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct XmacNode {
     pub name: String,
-    pub rotation: Quaternion,
-    pub unknown1: Vector4,
-    pub local_pos: Vector3,
-    pub local_scale: Vector3,
-    pub unknown2: Vector3,
-    pub unknown3: Vector2,
+    pub rotation: Quat,
+    pub unknown1: Vec4,
+    pub local_pos: Vec3,
+    pub local_scale: Vec3,
+    pub unknown2: Vec3,
+    pub unknown3: Vec2,
     pub parent_idx: Option<usize>,
     pub child_count: u32,
     pub flags: XmacNodeFlags,
     pub unknown4: [u8; 3],
     pub unknown5: f32,
-    pub oriented_bounding_box: Matrix,
+    pub oriented_bounding_box: glam::Mat4,
 }
 
 bitflags! {
@@ -64,12 +65,12 @@ impl XmacNodes {
                 let root_count = read_u32_endian(src, big_endian)? as usize;
                 let mut nodes = Vec::with_capacity(node_count);
                 for _idx in 0..node_count {
-                    let rotation = Quaternion::load_endian(src, big_endian)?;
-                    let unknown1 = Vector4::load_endian(src, big_endian)?;
-                    let local_pos = Vector3::load_endian(src, big_endian)?;
-                    let local_scale = Vector3::load_endian(src, big_endian)?;
-                    let unknown2 = Vector3::load_endian(src, big_endian)?;
-                    let unknown3 = Vector2::load_endian(src, big_endian)?;
+                    let rotation = Quat::load_endian(src, big_endian)?;
+                    let unknown1 = Vec4::load_endian(src, big_endian)?;
+                    let local_pos = Vec3::load_endian(src, big_endian)?;
+                    let local_scale = Vec3::load_endian(src, big_endian)?;
+                    let unknown2 = Vec3::load_endian(src, big_endian)?;
+                    let unknown3 = Vec2::load_endian(src, big_endian)?;
 
                     let parent_idx = read_i32_endian(src, big_endian)?;
                     let parent_idx = if parent_idx == -1 {
@@ -92,7 +93,7 @@ impl XmacNodes {
 
                     // might be the other way around:
                     let unknown5 = read_f32_endian(src, big_endian)?;
-                    let oriented_bounding_box = Matrix::load(src)?;
+                    let oriented_bounding_box = Mat4::load(src)?;
 
                     let node_name = read_xmac_str(src, big_endian)?;
 

@@ -7,7 +7,7 @@ use super::XmacChunkMeta;
 use crate::archive::ArchiveReadTarget;
 use crate::error::*;
 use crate::helpers::*;
-use crate::types::Vector3;
+use crate::types::Vec3;
 use crate::xmac::read_xmac_str;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -60,9 +60,9 @@ pub struct MeshDeformDeltas {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct MeshDeformDelta {
     vertex_id: u32,
-    position_delta: Vector3,
-    normal_delta: Vector3,
-    tangent_delta: Vector3,
+    position_delta: Vec3,
+    normal_delta: Vec3,
+    tangent_delta: Vec3,
 }
 
 impl XmacMorphTargets {
@@ -145,7 +145,7 @@ impl MeshDeformDeltas {
             let x = min_val + val_span * (x_comp as f32 / u16::MAX as f32);
             let y = min_val + val_span * (y_comp as f32 / u16::MAX as f32);
             let z = min_val + val_span * (z_comp as f32 / u16::MAX as f32);
-            delta.position_delta = Vector3 { x, y, z };
+            delta.position_delta = Vec3 { x, y, z };
         }
         // Normal Vectors are compressed to 8 bit/component:
         for delta in deltas.iter_mut() {
@@ -155,7 +155,7 @@ impl MeshDeformDeltas {
             let x = min_val + val_span * (x_comp as f32 / u8::MAX as f32);
             let y = min_val + val_span * (y_comp as f32 / u8::MAX as f32);
             let z = min_val + val_span * (z_comp as f32 / u8::MAX as f32);
-            delta.normal_delta = Vector3 { x, y, z };
+            delta.normal_delta = Vec3 { x, y, z };
         }
         // Tangent Vectors are compressed to 8 bit/component:
         for delta in deltas.iter_mut() {
@@ -165,7 +165,7 @@ impl MeshDeformDeltas {
             let x = min_val + val_span * (x_comp as f32 / u8::MAX as f32);
             let y = min_val + val_span * (y_comp as f32 / u8::MAX as f32);
             let z = min_val + val_span * (z_comp as f32 / u8::MAX as f32);
-            delta.tangent_delta = Vector3 { x, y, z };
+            delta.tangent_delta = Vec3 { x, y, z };
         }
         for delta in deltas.iter_mut() {
             delta.vertex_id = read_u32_endian(src, big_endian)?;
@@ -178,17 +178,17 @@ impl Default for MeshDeformDelta {
     fn default() -> Self {
         Self {
             vertex_id: 0,
-            position_delta: Vector3 {
+            position_delta: Vec3 {
                 x: 0.0,
                 y: 0.0,
                 z: 0.0,
             },
-            normal_delta: Vector3 {
+            normal_delta: Vec3 {
                 x: 0.0,
                 y: 0.0,
                 z: 0.0,
             },
-            tangent_delta: Vector3 {
+            tangent_delta: Vec3 {
                 x: 0.0,
                 y: 0.0,
                 z: 0.0,

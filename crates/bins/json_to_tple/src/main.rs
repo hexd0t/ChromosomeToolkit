@@ -1,6 +1,7 @@
 use formats::archive::PakFile;
 use formats::tple::TpleFile;
 use std::collections::VecDeque;
+use std::fs::File;
 use std::io::{BufReader, Write};
 use std::{env, ffi::OsString, path::Path};
 
@@ -31,8 +32,8 @@ fn main() {
             continue;
         }
 
-        let in_data = std::fs::File::open(path).unwrap();
-        let in_data = std::io::BufReader::new(in_data);
+        let in_data = File::open(path).unwrap();
+        let in_data = BufReader::new(in_data);
 
         let tple: TpleFile = match serde_json::from_reader(in_data) {
             Ok(r) => r,
@@ -45,7 +46,7 @@ fn main() {
 
         // As long as some contents remain unparsed, we need to retain the original string indices:
         let string_src = arg.replace(".tple.json", ".tple");
-        let mut in_data = std::fs::File::open(string_src).unwrap();
+        let mut in_data = File::open(string_src).unwrap();
         let PakFile {
             version: _,
             data: _,
@@ -82,13 +83,13 @@ fn main() {
             panic!("In == out path");
         }
         let out_os = OsString::from(&out_arg);
-        let out_path = std::path::Path::new(&out_os);
+        let out_path = Path::new(&out_os);
 
         // if out_path.exists() {
         //     println!("exists");
         //     continue;
         // }
-        let mut out_file = std::fs::File::create(out_path).expect("Unable to open output file");
+        let mut out_file = File::create(out_path).expect("Unable to open output file");
         match arch.save(&mut out_file) {
             Ok(_) => {}
             Err(e) => {
