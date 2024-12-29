@@ -131,6 +131,67 @@ impl XmacMesh {
             }
         }
     }
+
+    pub fn get_position_attrib(&self) -> Option<&Vec<Vec3>> {
+        fn get_position_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vec3>> {
+            if let XmacMeshAttrib::Positions(val) = &attrib.attribs {
+                Some(val)
+            } else {
+                None
+            }
+        }
+        self.vertex_attribute_layers
+            .iter()
+            .find_map(get_position_attrib)
+    }
+    pub fn get_normal_attrib(&self) -> Option<&Vec<Vec3>> {
+        fn get_normal_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vec3>> {
+            if let XmacMeshAttrib::Normals(val) = &attrib.attribs {
+                Some(val)
+            } else {
+                None
+            }
+        }
+        self.vertex_attribute_layers
+            .iter()
+            .find_map(get_normal_attrib)
+    }
+    pub fn get_tangent_attrib(&self) -> Option<&Vec<Vec4>> {
+        fn get_tangent_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vec4>> {
+            if let XmacMeshAttrib::Tangents(val) = &attrib.attribs {
+                Some(val)
+            } else {
+                None
+            }
+        }
+        self.vertex_attribute_layers
+            .iter()
+            .find_map(get_tangent_attrib)
+    }
+    pub fn get_uv_attrib(&self) -> Option<&Vec<Vec2>> {
+        fn get_uv_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vec2>> {
+            if let XmacMeshAttrib::UvCoords(val) = &attrib.attribs {
+                Some(val)
+            } else {
+                None
+            }
+        }
+        self.vertex_attribute_layers.iter().find_map(get_uv_attrib)
+    }
+
+    pub fn get_orig_vert(&self) -> Option<&Vec<u32>> {
+        fn get_orig_vert_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<u32>> {
+            if let XmacMeshAttrib::OriginalVertexNumbers(val) = &attrib.attribs {
+                Some(val)
+            } else {
+                None
+            }
+        }
+
+        self.vertex_attribute_layers
+            .iter()
+            .find_map(get_orig_vert_attrib)
+    }
 }
 
 impl XmacMeshAttribLayer {

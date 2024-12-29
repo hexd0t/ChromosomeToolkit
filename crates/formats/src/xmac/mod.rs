@@ -19,7 +19,9 @@ pub mod chunks;
 use chunks::{
     material::XmacStdMaterial,
     mesh::XmacMesh,
+    morph_targets::XmacMorphTargets,
     nodes::{XmacNodeId, XmacNodes},
+    skinning_info::XmacSkinningInfo,
     XmacChunk,
 };
 use serde::{Deserialize, Serialize};
@@ -181,6 +183,28 @@ impl XmacFile {
             }
         }
         self.chunks.iter().filter_map(get_material_chunk).collect()
+    }
+
+    pub fn get_skinning_chunks(&self) -> Vec<&XmacSkinningInfo> {
+        fn get_skinning_chunk(chunk: &XmacChunk) -> Option<&XmacSkinningInfo> {
+            if let XmacChunk::SkinningInfo(skin) = chunk {
+                Some(skin)
+            } else {
+                None
+            }
+        }
+        self.chunks.iter().filter_map(get_skinning_chunk).collect()
+    }
+
+    pub fn get_morph_chunk(&self) -> Option<&XmacMorphTargets> {
+        fn get_morph_chunk(chunk: &XmacChunk) -> Option<&XmacMorphTargets> {
+            if let XmacChunk::MorphTargets(mat) = chunk {
+                Some(mat)
+            } else {
+                None
+            }
+        }
+        self.chunks.iter().find_map(get_morph_chunk)
     }
 }
 

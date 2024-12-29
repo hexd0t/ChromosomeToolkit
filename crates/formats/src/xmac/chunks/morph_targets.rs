@@ -12,21 +12,21 @@ use crate::xmac::read_xmac_str;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct XmacMorphTargets {
-    targets: Vec<MorphTarget>,
-    unknown: u32,
+    pub targets: Vec<MorphTarget>,
+    pub unknown: u32,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct MorphTarget {
-    name: String,
+    pub name: String,
 
-    range_min: f32,
-    range_max: f32,
+    pub range_min: f32,
+    pub range_max: f32,
 
-    mesh_deform_deltas: Vec<MeshDeformDeltas>,
-    phoneme_set: PhonemeSet,
+    pub mesh_deform_deltas: Vec<MeshDeformDeltas>,
+    pub phoneme_set: PhonemeSet,
 
-    unknown1: u32,
+    pub unknown1: u32,
 }
 
 bitflags! {
@@ -52,17 +52,19 @@ bitflags! {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct MeshDeformDeltas {
-    node_id: XmacNodeId,
+    pub node_id: XmacNodeId,
 
-    deltas: Vec<MeshDeformDelta>,
+    /// vertex deltas
+    /// are guaranteed to be sorted by vertex id
+    pub deltas: Vec<MeshDeformDelta>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct MeshDeformDelta {
-    vertex_id: u32,
-    position_delta: Vec3,
-    normal_delta: Vec3,
-    tangent_delta: Vec3,
+    pub vertex_id: u32,
+    pub position_delta: Vec3,
+    pub normal_delta: Vec3,
+    pub tangent_delta: Vec3,
 }
 
 impl XmacMorphTargets {
@@ -114,7 +116,7 @@ impl MorphTarget {
         }
         assert_eq!(
             transformations_count, 0,
-            "Transformations are not implemented yet"
+            "Transformations are not supported"
         );
 
         Ok(Self {
@@ -170,6 +172,7 @@ impl MeshDeformDeltas {
         for delta in deltas.iter_mut() {
             delta.vertex_id = read_u32_endian(src, big_endian)?;
         }
+        deltas.sort_by_key(|d| d.vertex_id);
         Ok(Self { node_id, deltas })
     }
 }

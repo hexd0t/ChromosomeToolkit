@@ -1,36 +1,44 @@
 use std::{
     collections::{BTreeMap, HashMap},
     ffi::OsString,
-    io::{BufWriter, Write},
+    fs::File,
+    io::{BufWriter, Seek, Write},
     path::Path,
 };
 
 use super::{ConvError, Result};
 use formats::{
     binimport::BinImport,
-    helpers::{write_f32, write_u16},
+    helpers::{write_f32, write_u16, write_u32},
     types::{Mat4, Vec2, Vec3, Vec4},
     xmac::{
         chunks::{
             material::{XmacLayerBlendMode, XmacMaterialLayerType, XmacStandardMaterialLayer},
             mesh::{XmacMesh, XmacMeshAttrib, XmacMeshAttribLayer, XmacMeshSubmesh},
+            morph_targets::{MeshDeformDelta, MeshDeformDeltas},
             skinning_info::XmacSkinningInfo,
-            XmacChunk,
         },
         XmacFile,
     },
 };
 use gltf::json::{
+    accessor::{
+        sparse::{Indices as GltfSparseIndices, Sparse as GltfSparse, Values as GltfSparseValues},
+        IndexComponentType,
+    },
     extensions::material::{IndexOfRefraction, Ior, Material, Specular, SpecularFactor},
     image::MimeType,
     material::{EmissiveFactor, NormalTexture, PbrMetallicRoughness, StrengthFactor},
-    mesh::Primitive as GltfPrimitive,
+    mesh::{MorphTarget, Primitive as GltfPrimitive},
     texture::Info,
     validation::Checked::Valid as GltfValid,
     Accessor as GltfAccessor, Buffer as GltfBuffer, Image, Index as GltfIndex,
     Material as GltfMaterial, Mesh as GltfMesh, Node as GltfNode, Root as GltfRoot,
     Skin as GltfSkin, Texture,
 };
+use serde_json::Map;
+
+type MeshExtras = serde_json::Map<String, serde_json::Value>;
 
 pub fn xmac_to_gltf(input: &XmacFile, src_filepath: &str) -> Result<GltfRoot> {
     let mut output = GltfRoot::default();
@@ -40,10 +48,24 @@ pub fn xmac_to_gltf(input: &XmacFile, src_filepath: &str) -> Result<GltfRoot> {
         .extensions_used
         .push("KHR_materials_specular".to_string());
 
+    // It's easier to collect MeshExtras separately during translation:
+    let mut mesh_extras: Vec<MeshExtras> = Vec::new();
     translate_nodes(input, &mut output)?;
     translate_materials(input, &mut output)?;
-    translate_meshes(input, &mut output, src_filepath)?;
+    translate_meshes(input, &mut output, &mut mesh_extras, src_filepath)?;
     translate_skinning(input, &mut output, src_filepath)?;
+    translate_morphs(input, &mut output, &mut mesh_extras, src_filepath)?;
+
+    // Apply MeshExtras to GLTF data structure:
+    for (mesh_idx, extras) in mesh_extras
+        .into_iter()
+        .enumerate()
+        .filter(|(_, e)| !e.is_empty())
+    {
+        let raw_extras = serde_json::to_string(&serde_json::Value::Object(extras)).unwrap();
+        output.meshes[mesh_idx].extras =
+            Some(gltf::json::extras::RawValue::from_string(raw_extras).unwrap());
+    }
 
     Ok(output)
 }
@@ -85,7 +107,12 @@ fn translate_nodes(input: &XmacFile, output: &mut GltfRoot) -> Result<()> {
     Ok(())
 }
 
-fn translate_meshes(input: &XmacFile, output: &mut GltfRoot, src_filepath: &str) -> Result<()> {
+fn translate_meshes(
+    input: &XmacFile,
+    output: &mut GltfRoot,
+    mesh_extras: &mut Vec<MeshExtras>,
+    src_filepath: &str,
+) -> Result<()> {
     for mesh in input.get_mesh_chunks() {
         let gltf_node = &mut output.nodes[mesh.node_id.0 as usize];
         let mesh_idx = output.meshes.len();
@@ -103,7 +130,7 @@ fn translate_meshes(input: &XmacFile, output: &mut GltfRoot, src_filepath: &str)
             .map(|node_name| format!("{node_name}_mesh",))
             .unwrap_or_else(|| format!("mesh_{}", mesh.node_id.0));
         let mesh_buffer_path =
-            OsString::from(src_filepath.replace("._xmac", &format!("._xmac.{}.bin", &mesh_name)));
+            OsString::from(src_filepath.replace("._xmac", &format!(".{}.bin", &mesh_name)));
         let (positions, normals, tangents, uvs) =
             create_mesh_buffer(mesh, output, &Path::new(&mesh_buffer_path))?;
 
@@ -111,7 +138,7 @@ fn translate_meshes(input: &XmacFile, output: &mut GltfRoot, src_filepath: &str)
         let mut index_offset = 0;
         for (idx, submesh) in mesh.submeshes.iter().enumerate() {
             let submesh_buffer_path = OsString::from(
-                src_filepath.replace("._xmac", &format!("._xmac.{}_sub{idx}.bin", &mesh_name)),
+                src_filepath.replace("._xmac", &format!(".{}_sub{idx}.bin", &mesh_name)),
             );
             let indices = create_submesh_buffer(
                 submesh,
@@ -148,6 +175,7 @@ fn translate_meshes(input: &XmacFile, output: &mut GltfRoot, src_filepath: &str)
         };
 
         output.meshes.push(gltf_mesh);
+        mesh_extras.push(Map::new());
     }
     Ok(())
 }
@@ -178,55 +206,10 @@ fn create_mesh_buffer(
 )> {
     use gltf::json::validation::USize64;
 
-    fn get_position_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vec3>> {
-        if let XmacMeshAttrib::Positions(val) = &attrib.attribs {
-            Some(val)
-        } else {
-            None
-        }
-    }
-    fn get_normal_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vec3>> {
-        if let XmacMeshAttrib::Normals(val) = &attrib.attribs {
-            Some(val)
-        } else {
-            None
-        }
-    }
-    fn get_tangent_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vec4>> {
-        if let XmacMeshAttrib::Tangents(val) = &attrib.attribs {
-            Some(val)
-        } else {
-            None
-        }
-    }
-    fn get_uv_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<Vec2>> {
-        if let XmacMeshAttrib::UvCoords(val) = &attrib.attribs {
-            Some(val)
-        } else {
-            None
-        }
-    }
-
-    let mesh_positions = mesh
-        .vertex_attribute_layers
-        .iter()
-        .find_map(get_position_attrib)
-        .unwrap();
-    let mesh_normals = mesh
-        .vertex_attribute_layers
-        .iter()
-        .find_map(get_normal_attrib)
-        .unwrap();
-    let mesh_tangents = mesh
-        .vertex_attribute_layers
-        .iter()
-        .find_map(get_tangent_attrib)
-        .unwrap();
-    let mesh_uvs = mesh
-        .vertex_attribute_layers
-        .iter()
-        .find_map(get_uv_attrib)
-        .unwrap();
+    let mesh_positions = mesh.get_position_attrib().unwrap();
+    let mesh_normals = mesh.get_normal_attrib().unwrap();
+    let mesh_tangents = mesh.get_tangent_attrib().unwrap();
+    let mesh_uvs = mesh.get_uv_attrib().unwrap();
 
     if mesh.vertex_attribute_layers.len() != 5 {
         //4 used here + orig_vert_idx in skinning
@@ -407,19 +390,8 @@ fn create_submesh_buffer(
     Ok(gltf_indices)
 }
 
-fn translate_skinning<'a>(
-    input: &'a XmacFile,
-    output: &mut GltfRoot,
-    src_filepath: &str,
-) -> Result<()> {
-    fn get_skinning_chunk(chunk: &XmacChunk) -> Option<&XmacSkinningInfo> {
-        if let XmacChunk::SkinningInfo(skin) = chunk {
-            Some(skin)
-        } else {
-            None
-        }
-    }
-    for skin in input.chunks.iter().filter_map(get_skinning_chunk) {
+fn translate_skinning(input: &XmacFile, output: &mut GltfRoot, src_filepath: &str) -> Result<()> {
+    for skin in input.get_skinning_chunks() {
         let node_id = skin.node_id;
         let skin_mesh = input.get_mesh_chunk(node_id).ok_or_else(|| {
             ConvError::MandatoryDataMissing(format!(
@@ -438,7 +410,7 @@ fn translate_skinning<'a>(
         let inverse_binds = calculate_inv_binds(output, &node_to_joint_idx, &joints);
 
         let skin_buffer_path =
-            OsString::from(src_filepath.replace("._xmac", &format!("._xmac.{}.bin", &skin_name)));
+            OsString::from(src_filepath.replace("._xmac", &format!(".{}.bin", &skin_name)));
         let (gltf_inversebinds, gltf_joints, gltf_weights) = create_skin_buffer(
             skin,
             skin_mesh,
@@ -460,10 +432,7 @@ fn translate_skinning<'a>(
         let gltf_node = &mut output.nodes[node_id.0 as usize];
         gltf_node.skin = Some(gltf_skin);
 
-        let gltf_mesh = output
-            .meshes
-            .get_mut(output.nodes[node_id.0 as usize].mesh.unwrap().value())
-            .unwrap();
+        let gltf_mesh = get_gltf_mesh_for_node(output, node_id);
         for prim in gltf_mesh.primitives.iter_mut() {
             prim.attributes.insert(
                 GltfValid(gltf::json::mesh::Semantic::Joints(0)),
@@ -476,6 +445,21 @@ fn translate_skinning<'a>(
         }
     }
     Ok(())
+}
+
+fn get_gltf_mesh_for_node(
+    output: &mut GltfRoot,
+    node_id: formats::xmac::chunks::nodes::XmacNodeId,
+) -> &mut GltfMesh {
+    let mesh_idx = get_gltf_mesh_idx_for_node(output, node_id);
+    output.meshes.get_mut(mesh_idx).unwrap()
+}
+
+fn get_gltf_mesh_idx_for_node(
+    output: &GltfRoot,
+    node_id: formats::xmac::chunks::nodes::XmacNodeId,
+) -> usize {
+    output.nodes[node_id.0 as usize].mesh.unwrap().value()
 }
 
 fn calculate_inv_binds(
@@ -566,19 +550,8 @@ fn create_skin_buffer(
     GltfIndex<GltfAccessor>,
 )> {
     use gltf::json::validation::USize64;
-    fn get_orig_vert_attrib(attrib: &XmacMeshAttribLayer) -> Option<&Vec<u32>> {
-        if let XmacMeshAttrib::OriginalVertexNumbers(val) = &attrib.attribs {
-            Some(val)
-        } else {
-            None
-        }
-    }
 
-    let vertex_to_orig_vertex = skin_mesh
-        .vertex_attribute_layers
-        .iter()
-        .find_map(get_orig_vert_attrib)
-        .unwrap();
+    let vertex_to_orig_vertex = skin_mesh.get_orig_vert().unwrap();
 
     // glTf skinning is usually restricted to 4 influences:
     const JOINT_IDX_SIZE: usize = std::mem::size_of::<u16>() * 4;
@@ -609,11 +582,11 @@ fn create_skin_buffer(
         buffer,
         byte_length: USize64::from(joints_length),
         byte_offset: None,
-        byte_stride: Some(gltf::json::buffer::Stride(INVERSE_BIND_SIZE)),
+        byte_stride: None,
         extensions: Default::default(),
         extras: Default::default(),
         name: None,
-        target: Some(GltfValid(gltf::json::buffer::Target::ArrayBuffer)),
+        target: None,
     });
     let vertex_buffer_view = output.push(gltf::json::buffer::View {
         buffer,
@@ -833,4 +806,257 @@ fn xmac_mat_layer_to_texture(
     };
     // ToDo: actually export material texture to png there
     output.push(tex)
+}
+
+fn translate_morphs(
+    input: &XmacFile,
+    output: &mut GltfRoot,
+    mesh_extras: &mut Vec<MeshExtras>,
+    src_filepath: &str,
+) -> Result<()> {
+    let morphs: Vec<_> = input
+        .get_morph_chunk()
+        .iter()
+        .flat_map(|c| c.targets.iter())
+        .collect();
+    if morphs.is_empty() {
+        return Ok(());
+    }
+    let deform_buffer_path = OsString::from(src_filepath.replace("._xmac", ".morph_targets.bin"));
+    let (buffer, mut buffer_file) = create_morph_buffer(output, Path::new(&deform_buffer_path))?;
+    for morph in morphs {
+        for deform in &morph.mesh_deform_deltas {
+            let target_node_idx = deform.node_id;
+
+            let target_mesh = input.get_mesh_chunk(target_node_idx).unwrap();
+            let (morph_pos, morph_norm, morph_tang) = extend_morph_buffer(
+                target_mesh.get_position_attrib().unwrap().len(),
+                &deform.deltas,
+                output,
+                buffer,
+                &mut buffer_file,
+            )?;
+            let gltf_target = MorphTarget {
+                positions: Some(morph_pos),
+                normals: Some(morph_norm),
+                tangents: Some(morph_tang),
+            };
+
+            for (submesh_idx, _submesh) in target_mesh.submeshes.iter().enumerate() {
+                let gltf_mesh = get_gltf_mesh_for_node(output, target_node_idx);
+                let prim_targets = gltf_mesh.primitives[submesh_idx]
+                    .targets
+                    .get_or_insert_default();
+
+                prim_targets.push(gltf_target.clone());
+            }
+
+            let target_mesh_idx = get_gltf_mesh_idx_for_node(output, target_node_idx);
+            let mesh_target_names = mesh_extras[target_mesh_idx]
+                .entry(&"targetNames".to_string())
+                .or_insert_with(|| serde_json::Value::Array(Vec::new()))
+                .as_array_mut()
+                .unwrap();
+            mesh_target_names.push(morph.name.clone().into());
+            let gltf_mesh = get_gltf_mesh_for_node(output, target_node_idx);
+            gltf_mesh.weights.get_or_insert_default().push(0.0);
+        }
+    }
+    output.buffers[buffer.value()].byte_length =
+        gltf::json::validation::USize64(buffer_file.stream_position()?);
+    Ok(())
+}
+
+fn create_morph_buffer(
+    output: &mut GltfRoot,
+    buffer_path: &Path,
+) -> Result<(GltfIndex<GltfBuffer>, BufWriter<File>)> {
+    use gltf::json::validation::USize64;
+
+    let buffer = output.push(GltfBuffer {
+        byte_length: USize64(0),
+        extensions: Default::default(),
+        extras: Default::default(),
+        name: None,
+        uri: Some(
+            buffer_path
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned(),
+        ),
+    });
+
+    let buffer_file = File::create(buffer_path)?;
+    let buffer_file = BufWriter::new(buffer_file);
+
+    Ok((buffer, buffer_file))
+}
+
+fn extend_morph_buffer(
+    mesh_vert_count: usize,
+    deforms: &[MeshDeformDelta],
+    output: &mut GltfRoot,
+    buffer: GltfIndex<GltfBuffer>,
+    buffer_file: &mut BufWriter<File>,
+) -> Result<(
+    GltfIndex<GltfAccessor>,
+    GltfIndex<GltfAccessor>,
+    GltfIndex<GltfAccessor>,
+)> {
+    use gltf::json::validation::USize64;
+
+    const VERTEX_ID_SIZE: usize = std::mem::size_of::<u32>();
+
+    const POSITION_SIZE: usize = std::mem::size_of::<Vec3>();
+    const NORMAL_SIZE: usize = std::mem::size_of::<Vec3>();
+    const TANGENT_SIZE: usize = std::mem::size_of::<Vec3>();
+    const VERTEX_SIZE: usize = POSITION_SIZE + NORMAL_SIZE + TANGENT_SIZE;
+
+    let vertex_count = deforms.len();
+    let bounding = bounding_box(
+        &deforms
+            .iter()
+            .map(|d| d.position_delta)
+            .chain(std::iter::once(Vec3 {
+                //The bounding is defined on the whole vector, including the sparse zero deltas
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            }))
+            .collect::<Vec<_>>(),
+    );
+
+    let idx_buffer_length = vertex_count * VERTEX_ID_SIZE;
+    let vert_buffer_length = vertex_count * VERTEX_SIZE;
+    let start_offset = buffer_file.stream_position()?;
+
+    let idx_buffer_view = output.push(gltf::json::buffer::View {
+        buffer,
+        byte_length: USize64(idx_buffer_length as u64),
+        byte_offset: Some(USize64(start_offset)),
+        byte_stride: None,
+        extensions: None,
+        extras: None,
+        name: None,
+        target: None,
+    });
+    // Sparse value views may not define stride or target
+    let vert_buffer_view = output.push(gltf::json::buffer::View {
+        buffer,
+        byte_length: USize64::from(vert_buffer_length),
+        byte_offset: Some(USize64(start_offset + idx_buffer_length as u64)),
+        byte_stride: None,
+        extensions: None,
+        extras: None,
+        name: None,
+        target: None,
+    });
+
+    let sparse_indices = GltfSparseIndices {
+        buffer_view: idx_buffer_view,
+        byte_offset: USize64(0),
+        component_type: GltfValid(IndexComponentType(gltf::json::accessor::ComponentType::U32)),
+        extensions: None,
+        extras: None,
+    };
+    let gltf_positions = output.push(GltfAccessor {
+        buffer_view: None,
+        byte_offset: None,
+        count: USize64::from(mesh_vert_count),
+        component_type: GltfValid(gltf::json::accessor::GenericComponentType(
+            gltf::json::accessor::ComponentType::F32,
+        )),
+        extensions: Default::default(),
+        extras: Default::default(),
+        type_: GltfValid(gltf::json::accessor::Type::Vec3),
+        min: Some(gltf::json::Value::from(Vec::from(bounding.0))),
+        max: Some(gltf::json::Value::from(Vec::from(bounding.1))),
+        name: None,
+        normalized: false,
+        sparse: Some(GltfSparse {
+            count: USize64::from(vertex_count),
+            indices: sparse_indices.clone(),
+            values: GltfSparseValues {
+                buffer_view: vert_buffer_view.clone(),
+                byte_offset: USize64(0),
+                extensions: None,
+                extras: None,
+            },
+            extensions: None,
+            extras: None,
+        }),
+    });
+    let gltf_normals = output.push(GltfAccessor {
+        buffer_view: None,
+        byte_offset: None,
+        count: USize64::from(mesh_vert_count),
+        component_type: GltfValid(gltf::json::accessor::GenericComponentType(
+            gltf::json::accessor::ComponentType::F32,
+        )),
+        extensions: Default::default(),
+        extras: Default::default(),
+        type_: GltfValid(gltf::json::accessor::Type::Vec3),
+        min: None,
+        max: None,
+        name: None,
+        normalized: false,
+        sparse: Some(GltfSparse {
+            count: USize64::from(vertex_count),
+            indices: sparse_indices.clone(),
+            values: GltfSparseValues {
+                buffer_view: vert_buffer_view.clone(),
+                byte_offset: USize64::from(POSITION_SIZE * vertex_count),
+                extensions: None,
+                extras: None,
+            },
+            extensions: None,
+            extras: None,
+        }),
+    });
+    let gltf_tangents = output.push(GltfAccessor {
+        buffer_view: None,
+        byte_offset: None,
+        count: USize64::from(mesh_vert_count),
+        component_type: GltfValid(gltf::json::accessor::GenericComponentType(
+            gltf::json::accessor::ComponentType::F32,
+        )),
+        extensions: Default::default(),
+        extras: Default::default(),
+        type_: GltfValid(gltf::json::accessor::Type::Vec3),
+        min: None,
+        max: None,
+        name: None,
+        normalized: false,
+        sparse: Some(GltfSparse {
+            count: USize64::from(vertex_count),
+            indices: sparse_indices.clone(),
+            values: GltfSparseValues {
+                buffer_view: vert_buffer_view.clone(),
+                byte_offset: USize64::from(
+                    POSITION_SIZE * vertex_count + TANGENT_SIZE * vertex_count,
+                ),
+                extensions: None,
+                extras: None,
+            },
+            extensions: None,
+            extras: None,
+        }),
+    });
+
+    for vert in deforms {
+        write_u32(buffer_file, vert.vertex_id)?;
+    }
+    for vert in deforms {
+        vert.position_delta.save(buffer_file)?;
+    }
+    for vert in deforms {
+        vert.normal_delta.save(buffer_file)?;
+    }
+    for vert in deforms {
+        vert.tangent_delta.save(buffer_file)?;
+    }
+    buffer_file.flush()?;
+
+    Ok((gltf_positions, gltf_normals, gltf_tangents))
 }

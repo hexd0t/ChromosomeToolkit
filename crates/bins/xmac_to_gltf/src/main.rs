@@ -45,7 +45,7 @@ fn main() {
         );
         drop(in_data);
 
-        let out_arg = arg.replace("._xmac", "._xmac.gltf");
+        let out_arg = arg.replace("._xmac", ".gltf");
         if out_arg == arg {
             panic!("In == out path");
         }
