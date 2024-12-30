@@ -3,9 +3,11 @@ pub mod object;
 pub mod properties;
 pub mod property_set;
 pub mod template;
+pub mod time;
+
+use std::io::Read;
 
 use serde::{Deserialize, Serialize};
-use std::io::{Read, Write};
 use uuid::Uuid;
 
 use crate::binimport::BinImport;
@@ -311,20 +313,6 @@ impl Node {
     pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<()> {
         let version = self.version;
         write_u16(dst, version)?;
-        Ok(())
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct DateTime(pub u64);
-
-impl DateTime {
-    pub fn load<R: Read>(src: &mut R) -> Result<Self> {
-        let val = read_u64(src)?;
-        Ok(Self(val))
-    }
-    pub fn save<W: Write>(&self, dst: &mut W) -> Result<()> {
-        write_u64(dst, self.0)?;
         Ok(())
     }
 }

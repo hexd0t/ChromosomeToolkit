@@ -16,6 +16,8 @@
 
 pub mod chunks;
 
+use std::{io::Write, time::SystemTime};
+
 use chunks::{
     material::XmacStdMaterial,
     mesh::XmacMesh,
@@ -27,86 +29,65 @@ use chunks::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    archive::ArchiveReadTarget,
+    archive::{ArchiveReadTarget, ArchiveWriteTarget, TempWriteTarget},
     error::*,
     helpers::*,
-    types::{properties::Property, DateTime},
+    resourcefile::ResourceFile,
+    types::time::DateTime,
 };
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct XmacFile {
-    pub timestamp: DateTime,
-    pub props: Vec<Property>,
+    pub res: ResourceFile,
     pub chunks: Vec<chunks::XmacChunk>,
 }
 
+const R1_REV: [u8; 4] = *b"MA02";
+const R1_CLASS: &str = "eCMotionActorResource2";
+const R1_RAW_EXT: [u8; 8] = *b".xac\0\0\0\0";
+const XMAC_MAGIC: [u8; 4] = *b"XAC ";
+
 impl XmacFile {
+    pub fn new(timestamp: SystemTime) -> Self {
+        Self {
+            res: ResourceFile {
+                timestamp: DateTime::new(timestamp),
+                props: Vec::new(),
+                data_revision: R1_REV,
+                class_name: R1_CLASS.to_string(),
+                raw_file_ext: R1_RAW_EXT,
+            },
+            chunks: Vec::new(),
+        }
+    }
+
     pub fn load<R: ArchiveReadTarget>(src: &mut R) -> Result<Self> {
-        let mut revision = [0u8; 4];
-        src.read_exact(&mut revision)?;
-        assert_eq!(&revision, "GR01".as_bytes());
-        let mut data_revision = [0u8; 4];
-        src.read_exact(&mut data_revision)?;
-        assert_eq!(&data_revision, "MA02".as_bytes());
+        let res = ResourceFile::load(src)?;
 
-        //prop_offset: u32 - Header up to that point is always 0x28
-        let prop_offset = read_u32(src)? as usize;
-        assert_eq!(prop_offset, 0x28);
+        assert_eq!(&res.data_revision, &R1_REV);
+        assert_eq!(&res.raw_file_ext, &R1_RAW_EXT);
+        assert_eq!(&res.class_name, &R1_CLASS);
 
-        let prop_length = read_u32(src)? as usize;
-
-        let data_offset = read_u32(src)? as usize;
-        assert_eq!(prop_length + prop_offset, data_offset);
-
-        let _data_len = read_u32(src)? as usize;
-
-        let timestamp = DateTime::load(src)?;
-
-        let mut raw_file_ext = [0u8; 8];
-        src.read_exact(&mut raw_file_ext)?;
-        assert_eq!(&raw_file_ext[0..4], ".xac".as_bytes());
-        assert_eq!(&raw_file_ext[4..8], &[0, 0, 0, 0]);
-
-        let props = Self::load_meta(src)?;
         let chunks = Self::load_xmac(src)?;
 
         let trail = read_u64(src)?;
         assert_eq!(trail, 0);
 
-        Ok(XmacFile {
-            props,
-            chunks,
-            timestamp,
-        })
+        Ok(XmacFile { res, chunks })
     }
 
-    fn load_meta<R: ArchiveReadTarget>(src: &mut R) -> Result<Vec<Property>> {
-        let mut header = [0u8; 6];
-        src.read_exact(&mut header)?;
-        assert_eq!(&header, &[1, 0, 1, 1, 0, 1]);
+    pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<()> {
+        assert_eq!(self.res.props.len(), 1);
+        assert_eq!(&self.res.props[0].name, "Boundary");
 
-        let class_name = src.read_str()?;
-        assert_eq!(class_name.as_str(), "eCMotionActorResource2");
-        let mut unknown1 = [0u8; 3];
-        src.read_exact(&mut unknown1)?;
-        assert_eq!(&unknown1, &[1, 0, 0]);
+        let mut data = TempWriteTarget::new(dst);
+        self.save_xmac(&mut data)?;
+        let data = data.finish();
 
-        let class_ver = read_u16(src)?;
-        assert_eq!(class_ver, 201);
-        let version = read_u16(src)?;
-        assert_eq!(version, 201);
-        let _data_len = read_u32(src)?;
+        self.res.save(dst, data.len())?;
+        dst.write_all(&data)?;
 
-        let prop_data_ver = read_u16(src)?;
-        assert_eq!(prop_data_ver, 201);
-        let prop_count = read_u32(src)? as usize;
-        let mut props = Vec::with_capacity(prop_count);
-        for _idx in 0..prop_count {
-            props.push(Property::load(src)?);
-        }
-        let class_version = read_u16(src)?;
-        assert_eq!(class_version, 201);
-        Ok(props)
+        Ok(())
     }
 
     fn load_xmac<R: ArchiveReadTarget>(src: &mut R) -> Result<Vec<chunks::XmacChunk>> {
@@ -116,7 +97,7 @@ impl XmacFile {
 
         let mut magic = vec![0; 4];
         src.read_exact(&mut magic)?;
-        assert_eq!(&magic, "XAC ".as_bytes());
+        assert_eq!(&magic, &XMAC_MAGIC);
 
         let _actor_version_maj = read_u8(src)?;
         let _actor_version_min = read_u8(src)?;
@@ -135,6 +116,30 @@ impl XmacFile {
         }
 
         Ok(chunks)
+    }
+
+    pub fn save_xmac<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<()> {
+        let mut data = TempWriteTarget::new(dst);
+        data.write_all(&XMAC_MAGIC)?;
+        // Version Maj:
+        write_u8(&mut data, 1)?;
+        // Version Min:
+        write_u8(&mut data, 0)?;
+
+        let big_endian = false; // Big Endian doesn't make sense on x86, but its here if you need it
+        let multiply_order = false; // Don't really know the influence
+
+        write_bool(&mut data, big_endian)?;
+        write_bool(&mut data, multiply_order)?;
+
+        for chunk in &self.chunks {
+            chunk.save(&mut data, big_endian)?;
+        }
+        let data = data.finish();
+
+        write_u32(dst, data.len() as u32)?; //this one is always little-endian
+        dst.write_all(&data)?;
+        Ok(())
     }
 
     pub fn get_nodes_chunk(&self) -> Option<&XmacNodes> {

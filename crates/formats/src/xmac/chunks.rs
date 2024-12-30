@@ -7,6 +7,8 @@ use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 
 use crate::archive::ArchiveReadTarget;
+use crate::archive::ArchiveWriteTarget;
+use crate::archive::TempWriteTarget;
 use crate::error::*;
 use crate::helpers::*;
 
@@ -76,19 +78,19 @@ impl XmacChunk {
         let chunk_end = chunk_start + chunk_meta.size as u64;
         let result = if let Ok(chunk_type) = chunk_meta.type_id.try_into() {
             match chunk_type {
-                XmacChunkType::Info => Self::handle_unknown(
+                XmacChunkType::Info => Self::load_unknown(
                     info::XmacInfo::load(src, big_endian, multiply_order, &chunk_meta)?
                         .map(XmacChunk::Info),
                     src,
                     &chunk_meta,
                 ),
-                XmacChunkType::Nodes => Self::handle_unknown(
+                XmacChunkType::Nodes => Self::load_unknown(
                     nodes::XmacNodes::load(src, big_endian, multiply_order, &chunk_meta)?
                         .map(XmacChunk::Nodes),
                     src,
                     &chunk_meta,
                 ),
-                XmacChunkType::MaterialInfo => Self::handle_unknown(
+                XmacChunkType::MaterialInfo => Self::load_unknown(
                     material_info::XmacMaterialInfo::load(
                         src,
                         big_endian,
@@ -99,13 +101,13 @@ impl XmacChunk {
                     src,
                     &chunk_meta,
                 ),
-                XmacChunkType::StdMaterial => Self::handle_unknown(
+                XmacChunkType::StdMaterial => Self::load_unknown(
                     material::XmacStdMaterial::load(src, big_endian, multiply_order, &chunk_meta)?
                         .map(XmacChunk::StdMaterial),
                     src,
                     &chunk_meta,
                 ),
-                XmacChunkType::Mesh => Self::handle_unknown(
+                XmacChunkType::Mesh => Self::load_unknown(
                     mesh::XmacMesh::load(src, big_endian, multiply_order, &chunk_meta)?
                         .map(XmacChunk::Mesh),
                     src,
@@ -113,7 +115,7 @@ impl XmacChunk {
                 ),
                 XmacChunkType::SkinningInfo => {
                     let meshes = Self::get_meshes(prev_chunks);
-                    Self::handle_unknown(
+                    Self::load_unknown(
                         skinning_info::XmacSkinningInfo::load(
                             src,
                             big_endian,
@@ -126,7 +128,7 @@ impl XmacChunk {
                         &chunk_meta,
                     )
                 }
-                XmacChunkType::StdPMorphTargets => Self::handle_unknown(
+                XmacChunkType::StdPMorphTargets => Self::load_unknown(
                     morph_targets::XmacMorphTargets::load(
                         src,
                         big_endian,
@@ -168,7 +170,25 @@ impl XmacChunk {
         Ok(result)
     }
 
-    pub fn handle_unknown<R: ArchiveReadTarget>(
+    pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W, big_endian: bool) -> Result<()> {
+        let mut data = TempWriteTarget::new(dst);
+        let meta = match self {
+            XmacChunk::Info(xmac_info) => todo!(),
+            XmacChunk::Nodes(xmac_nodes) => todo!(),
+            XmacChunk::MaterialInfo(xmac_material_info) => todo!(),
+            XmacChunk::StdMaterial(xmac_std_material) => todo!(),
+            XmacChunk::Mesh(xmac_mesh) => todo!(),
+            XmacChunk::SkinningInfo(xmac_skinning_info) => todo!(),
+            XmacChunk::MorphTargets(xmac_morph_targets) => todo!(),
+            XmacChunk::Unknown(xmac_unknown_chunk) => xmac_unknown_chunk.save(&mut data)?,
+        };
+        let data = data.finish();
+        meta.save(dst, big_endian)?;
+        dst.write_all(&data)?;
+        Ok(())
+    }
+
+    pub fn load_unknown<R: ArchiveReadTarget>(
         parse_result: Option<XmacChunk>,
         src: &mut R,
         chunk_meta: &XmacChunkMeta,
@@ -178,23 +198,6 @@ impl XmacChunk {
         })
     }
 
-    // fn get_last_material_info(prev_chunks: &[XmacChunk]) -> Result<&XmacMaterialInfo> {
-    //     prev_chunks
-    //         .iter()
-    //         .rev()
-    //         .find_map(|c| {
-    //             if let XmacChunk::MaterialInfo(mat) = c {
-    //                 Some(mat)
-    //             } else {
-    //                 None
-    //             }
-    //         })
-    //         .ok_or_else(|| {
-    //             Error::InvalidStructure(
-    //                 "StdMaterials chunk without preceding MaterialInfo".to_string(),
-    //             )
-    //         })
-    // }
     fn get_meshes(prev_chunks: &[XmacChunk]) -> HashMap<XmacNodeId, &XmacMesh> {
         prev_chunks
             .iter()
@@ -219,5 +222,12 @@ impl XmacChunkMeta {
             size,
             version,
         })
+    }
+
+    pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W, big_endian: bool) -> Result<()> {
+        write_u32_endian(dst, self.type_id, big_endian)?;
+        write_u32_endian(dst, self.size, big_endian)?;
+        write_u32_endian(dst, self.version, big_endian)?;
+        Ok(())
     }
 }

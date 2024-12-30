@@ -68,7 +68,7 @@ impl Object {
     pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<()> {
         write_u16(dst, self.version)?;
 
-        let mut block = PakFileTempBlock::new(dst);
+        let mut block = TempWriteTarget::new(dst);
 
         write_u16(&mut block, self.prop_data_ver)?;
 

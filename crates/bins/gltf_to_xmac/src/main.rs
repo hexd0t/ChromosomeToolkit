@@ -3,23 +3,17 @@ use std::{
     env,
     ffi::OsString,
     fs::File,
-    io::{BufWriter, Seek, Write},
+    io::{BufWriter, Write},
     path::Path,
+    time::SystemTime,
 };
 
-use formats::xmac::XmacFile;
-use serde::Serialize;
 mod translation;
 
 fn main() {
-    println!("Chromosome Toolkit - R1 - XMAC to GLTF");
+    println!("Chromosome Toolkit - R1 - GLTF to XMAC");
     let mut queue = env::args().skip(1).collect::<VecDeque<_>>();
-    let mut dump_intermediate = false;
     while let Some(arg) = queue.pop_front() {
-        if &arg == "/dumpintermediate" {
-            dump_intermediate = true;
-            continue;
-        }
         println!("{}", arg);
         let os_arg = OsString::from(&arg);
         let path = Path::new(&os_arg);
@@ -33,7 +27,7 @@ fn main() {
                 for file in dir.flatten() {
                     let meta = file.metadata().unwrap();
                     let path = file.path().to_string_lossy().to_string();
-                    if meta.is_dir() || path.ends_with("._xmac") {
+                    if meta.is_dir() || path.ends_with(".gltf") || path.ends_with(".glb") {
                         queue.push_back(path);
                     }
                 }
@@ -42,23 +36,21 @@ fn main() {
             }
             continue;
         }
-        let in_data = std::fs::File::open(path).unwrap();
-        let mut in_data = std::io::BufReader::new(in_data);
-        let xmac = XmacFile::load(&mut in_data).unwrap();
-        println!(
-            "Read: {:x}/{:x}",
-            in_data.stream_position().unwrap(),
-            in_data.seek(std::io::SeekFrom::End(0)).unwrap()
-        );
-        drop(in_data);
+        let file_time = path
+            .metadata()
+            .ok()
+            .and_then(|meta| meta.modified().ok())
+            .unwrap_or_else(SystemTime::now);
+        let (gltf, buffer, textures) = gltf::import(path).unwrap();
 
-        let out_arg = arg.replace("._xmac", ".gltf");
+        let out_arg = arg
+            .replace(".gltf", "_out._xmac")
+            .replace(".glb", "_out._xmac");
         if out_arg == arg {
             panic!("In == out path");
         }
-        let out_bin = OsString::from(arg.replace("._xmac", ".bin"));
 
-        let gltf = translation::xmac_to_gltf(&xmac, Path::new(&out_bin)).unwrap();
+        let xmac = translation::gltf_to_xmac(gltf, buffer, textures, file_time).unwrap();
         println!("Translation done");
 
         let out_os = OsString::from(&out_arg);
@@ -67,21 +59,8 @@ fn main() {
         let out_file = File::create(out_path).expect("Unable to open output file");
         let mut out_file = BufWriter::new(out_file);
 
-        gltf.to_writer_pretty(&mut out_file).unwrap();
+        xmac.save(&mut out_file).unwrap();
         out_file.flush().unwrap();
-
-        if dump_intermediate {
-            println!("Dumping intermediate format");
-            let out_arg = arg.replace("._xmac", "._xmac.json");
-            let formatter = serde_json::ser::PrettyFormatter::with_indent(b"  ");
-            let out_os = OsString::from(&out_arg);
-            let out_path = Path::new(&out_os);
-            let out_file = File::create(out_path).expect("Unable to open output file");
-            let mut out_file = BufWriter::new(out_file);
-            let mut ser = serde_json::Serializer::with_formatter(&mut out_file, formatter);
-            xmac.serialize(&mut ser).unwrap();
-            out_file.flush().unwrap();
-        }
         println!("done");
     }
 }

@@ -26,7 +26,7 @@ fn main() {
                 for file in dir.flatten() {
                     let meta = file.metadata().unwrap();
                     let path = file.path().to_string_lossy().to_string();
-                    if meta.is_dir() || path.ends_with(".mp3") || path.ends_with(".MP3") {
+                    if meta.is_dir() || path.ends_with(".mp3") {
                         queue.push_back(path);
                     }
                 }

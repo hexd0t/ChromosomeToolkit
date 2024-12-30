@@ -6,7 +6,7 @@ members = [
     "crates/bins/json_to_lrent",
     "crates/bins/tple_to_json",
     "crates/bins/json_to_tple",
-    "crates/bins/xmac_to_gltf",
+    "crates/bins/xmac_to_gltf", "crates/bins/gltf_to_xmac",
 ]
 resolver = "2"
 

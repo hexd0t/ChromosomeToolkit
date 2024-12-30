@@ -20,7 +20,7 @@ pub struct XmacMesh {
 
     pub node_id: XmacNodeId,
     pub orig_verts_count: u32,
-    pub unknown: u32,
+    pub unknown1: u32,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -118,7 +118,7 @@ impl XmacMesh {
                     submeshes,
                     node_id,
                     orig_verts_count,
-                    unknown,
+                    unknown1: unknown,
                 }))
             }
 

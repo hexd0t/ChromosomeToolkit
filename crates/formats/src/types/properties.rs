@@ -307,7 +307,7 @@ impl Property {
     }
 
     pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<()> {
-        let mut block = PakFileTempBlock::new(dst);
+        let mut block = TempWriteTarget::new(dst);
         //needed for lifetime reasons if the match needs to calculate the type name:
         let dynamic_type: String;
 

@@ -9,6 +9,7 @@ pub enum Error {
     EnumUnparsable(String),
     InvalidStructure(String),
     InvalidString(String),
+    InvalidOp(String),
 }
 
 impl Display for Error {

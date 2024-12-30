@@ -157,7 +157,7 @@ pub struct Entity {
     pub collision_enabled: u8,
     pub insert_type: u16,
     pub locked: u8,
-    pub changed_timestamp: DateTime,
+    pub changed_timestamp: time::DateTime,
     pub is_savegame_relevant: u8,
 
     #[serde(default = "Vec::new")]
@@ -210,7 +210,7 @@ impl Entity {
             (0, read_bool(src)?, 0)
         };
 
-        let changed_timestamp = DateTime::load(src)?;
+        let changed_timestamp = time::DateTime::load(src)?;
         let (unknown6, unknown7) = if version <= 212 {
             (read_u8(src)?, read_u8(src)?)
         } else {

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{AccessorPropertyObject, DateTime, Quat, Vec3};
+use super::{time::DateTime, AccessorPropertyObject, Quat, Vec3};
 use crate::binimport::BinImport;
 use crate::error::*;
 use crate::types::PropertyId;
@@ -53,7 +53,7 @@ impl TemplatePropertyAccessor {
         let class_name = self.accessor_prop.object.get_class_name();
         dst.write_str(class_name)?;
 
-        let mut block = PakFileTempBlock::new(dst);
+        let mut block = TempWriteTarget::new(dst);
         self.accessor_prop.save(&mut block)?;
         let block = block.finish();
 

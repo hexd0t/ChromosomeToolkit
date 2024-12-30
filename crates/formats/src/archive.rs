@@ -1,6 +1,9 @@
 use super::helpers::*;
 use crate::error::*;
-use std::io::{Read, Seek, Write};
+use std::{
+    fs::File,
+    io::{BufReader, BufWriter, Cursor, Read, Seek, Write},
+};
 
 pub struct PakFile {
     pub version: u16,
@@ -77,14 +80,24 @@ impl PakFile {
         write_u32(dst, text_count as u32)?;
 
         for string in &self.strings {
-            let (str_enc, _, unmappable_chars) = encoding_rs::WINDOWS_1252.encode(string);
-            if unmappable_chars {
-                println!("Warning: String '{string}' contains unmappable characters!")
-            }
-            write_u16(dst, str_enc.len() as u16)?;
-            dst.write_all(&str_enc)?;
+            write_str_to_write(dst, string)?;
         }
         Ok(())
+    }
+
+    fn get_string_idx(&mut self, content: &str) -> u16 {
+        let idx = if let Some(idx) = self
+            .strings
+            .iter()
+            .position(|existing| existing.as_str() == content)
+        {
+            idx
+        } else {
+            let idx = self.strings.len();
+            self.strings.push(content.to_string());
+            idx
+        } as u16;
+        idx
     }
 }
 
@@ -123,12 +136,12 @@ impl Seek for PakFile {
     }
 }
 
-pub struct PakFileTempBlock<'a> {
+pub struct TempWriteTarget<'a> {
     pub target: Box<&'a mut dyn ArchiveWriteTarget>,
     pub temp_data: Vec<u8>,
 }
 
-impl<'a> PakFileTempBlock<'a> {
+impl<'a> TempWriteTarget<'a> {
     pub fn new<W: ArchiveWriteTarget>(target: &'a mut W) -> Self {
         Self {
             target: Box::new(target),
@@ -141,7 +154,7 @@ impl<'a> PakFileTempBlock<'a> {
     }
 }
 
-impl Write for PakFileTempBlock<'_> {
+impl Write for TempWriteTarget<'_> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.temp_data.write(buf)
     }
@@ -179,42 +192,53 @@ impl ArchiveReadTarget for PakFile {
     }
 }
 
-impl ArchiveReadTarget for std::fs::File {}
-impl ArchiveReadTarget for std::io::BufReader<std::fs::File> {}
+impl ArchiveReadTarget for BufReader<File> {}
+
+fn write_str_to_write<W: Write + ?Sized>(dst: &mut W, content: &str) -> std::io::Result<()> {
+    let (str_buf, _, unmappable) = encoding_rs::WINDOWS_1252.encode(content);
+    let len_buf = str_buf.len().to_le_bytes();
+    dst.write_all(&len_buf)?;
+    dst.write_all(&str_buf)?;
+    if unmappable {
+        println!("Warning: String '{content}' contains unmappable characters!");
+    }
+    Ok(())
+}
 
 pub trait ArchiveWriteTarget: Write {
-    fn create_str_idx(&mut self, content: &str) -> Result<usize>;
-    fn write_str(&mut self, content: &str) -> Result<()>;
+    fn create_str_repr(&mut self, content: &str) -> Result<Vec<u8>> {
+        let mut repr_buf = Cursor::new(Vec::new());
+        write_str_to_write(&mut repr_buf, content)?;
+        Ok(repr_buf.into_inner())
+    }
+    fn write_str(&mut self, content: &str) -> Result<()> {
+        write_str_to_write(self, content)?;
+        Ok(())
+    }
 }
 
 impl ArchiveWriteTarget for PakFile {
-    fn create_str_idx(&mut self, content: &str) -> Result<usize> {
-        if let Some(idx) = self
-            .strings
-            .iter()
-            .position(|existing| existing.as_str() == content)
-        {
-            Ok(idx)
-        } else {
-            let idx = self.strings.len();
-            self.strings.push(content.to_string());
-            Ok(idx)
-        }
+    fn create_str_repr(&mut self, content: &str) -> Result<Vec<u8>> {
+        let idx = self.get_string_idx(content);
+        Ok(idx.to_le_bytes().into())
     }
     fn write_str(&mut self, content: &str) -> Result<()> {
-        let idx = self.create_str_idx(content)?;
-        write_u16(&mut self.data, idx as u16)?;
+        let idx = self.get_string_idx(content);
+        write_u16(&mut self.data, idx)?;
         Ok(())
     }
 }
 
-impl ArchiveWriteTarget for PakFileTempBlock<'_> {
-    fn create_str_idx(&mut self, content: &str) -> Result<usize> {
-        self.target.create_str_idx(content)
+impl ArchiveWriteTarget for TempWriteTarget<'_> {
+    fn create_str_repr(&mut self, content: &str) -> Result<Vec<u8>> {
+        self.target.create_str_repr(content)
     }
     fn write_str(&mut self, content: &str) -> Result<()> {
-        let idx = self.create_str_idx(content)?;
-        write_u16(&mut self.temp_data, idx as u16)?;
+        let repr = self.create_str_repr(content)?;
+        self.temp_data.write_all(&repr)?;
         Ok(())
     }
 }
+
+impl ArchiveWriteTarget for Cursor<Vec<u8>> {}
+impl ArchiveWriteTarget for BufWriter<File> {}

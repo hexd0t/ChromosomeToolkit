@@ -2,7 +2,7 @@ use formats::archive::PakFile;
 use formats::tple::TpleFile;
 use std::collections::VecDeque;
 use std::fs::File;
-use std::io::{BufReader, Write};
+use std::io::{BufReader, BufWriter, Write};
 use std::{env, ffi::OsString, path::Path};
 
 fn main() {
@@ -46,7 +46,7 @@ fn main() {
 
         // As long as some contents remain unparsed, we need to retain the original string indices:
         let string_src = arg.replace(".tple.json", ".tple");
-        let mut in_data = File::open(string_src).unwrap();
+        let mut in_data = BufReader::new(File::open(string_src).unwrap());
         let PakFile {
             version: _,
             data: _,
@@ -89,7 +89,8 @@ fn main() {
         //     println!("exists");
         //     continue;
         // }
-        let mut out_file = File::create(out_path).expect("Unable to open output file");
+        let out_file = File::create(out_path).expect("Unable to open output file");
+        let mut out_file = BufWriter::new(out_file);
         match arch.save(&mut out_file) {
             Ok(_) => {}
             Err(e) => {

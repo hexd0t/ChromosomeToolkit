@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::XmacChunkMeta;
-use crate::archive::ArchiveReadTarget;
+use crate::archive::{ArchiveReadTarget, ArchiveWriteTarget};
 use crate::error::*;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -20,6 +20,14 @@ impl XmacUnknownChunk {
             type_id: chunk_meta.type_id,
             version: chunk_meta.version,
             data,
+        })
+    }
+    pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<XmacChunkMeta> {
+        dst.write_all(&self.data)?;
+        Ok(XmacChunkMeta {
+            type_id: self.type_id,
+            size: self.data.len() as u32,
+            version: self.version,
         })
     }
 }
