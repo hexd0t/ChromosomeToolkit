@@ -15,6 +15,7 @@ serde = { version = "1", features = ["derive"] }
 gltf = { version = "1.4", features = [
     "KHR_materials_specular",
     "KHR_materials_ior",
+    "KHR_texture_transform",
     "extras",
 ] }
 

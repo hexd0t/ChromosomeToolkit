@@ -42,6 +42,7 @@ fn main() {
             }
             continue;
         }
+        eprintln!("{}", arg);
         let in_data = std::fs::File::open(path).unwrap();
         let mut in_data = std::io::BufReader::new(in_data);
         let xmac = XmacFile::load(&mut in_data).unwrap();
@@ -55,6 +56,17 @@ fn main() {
         let out_arg = arg.replace("._xmac", ".gltf");
         if out_arg == arg {
             panic!("In == out path");
+        }
+        if dump_intermediate {
+            println!("Dumping intermediate format");
+            let int_arg = arg.replace("._xmac", "._xmac.json");
+            let formatter = serde_json::ser::PrettyFormatter::with_indent(b"  ");
+            let int_os = OsString::from(&int_arg);
+            let int_file = File::create(Path::new(&int_os)).expect("Unable to open output file");
+            let mut int_file = BufWriter::new(int_file);
+            let mut ser = serde_json::Serializer::with_formatter(&mut int_file, formatter);
+            xmac.serialize(&mut ser).unwrap();
+            int_file.flush().unwrap();
         }
         let out_bin = OsString::from(arg.replace("._xmac", ".bin"));
 
@@ -70,18 +82,6 @@ fn main() {
         gltf.to_writer_pretty(&mut out_file).unwrap();
         out_file.flush().unwrap();
 
-        if dump_intermediate {
-            println!("Dumping intermediate format");
-            let out_arg = arg.replace("._xmac", "._xmac.json");
-            let formatter = serde_json::ser::PrettyFormatter::with_indent(b"  ");
-            let out_os = OsString::from(&out_arg);
-            let out_path = Path::new(&out_os);
-            let out_file = File::create(out_path).expect("Unable to open output file");
-            let mut out_file = BufWriter::new(out_file);
-            let mut ser = serde_json::Serializer::with_formatter(&mut out_file, formatter);
-            xmac.serialize(&mut ser).unwrap();
-            out_file.flush().unwrap();
-        }
         println!("done");
     }
 }

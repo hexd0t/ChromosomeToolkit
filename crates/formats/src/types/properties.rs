@@ -14,6 +14,7 @@ use crate::helpers::*;
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Property {
     pub name: String,
+    /// always 30 for R1
     pub version: u16,
     pub data: Box<PropData>,
 }

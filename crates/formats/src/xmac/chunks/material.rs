@@ -146,31 +146,8 @@ impl XmacStdMaterial {
                 let material_name = read_xmac_str(src, big_endian)?;
                 let mut layers = Vec::with_capacity(layer_count as usize);
                 for _idx in 0..layer_count {
-                    let amount = read_f32_endian(src, big_endian)?;
-                    let u_offset = read_f32_endian(src, big_endian)?;
-                    let v_offset = read_f32_endian(src, big_endian)?;
-                    let u_tiling = read_f32_endian(src, big_endian)?;
-                    let v_tiling = read_f32_endian(src, big_endian)?;
-                    let rotation_rads = read_f32_endian(src, big_endian)?;
-                    let material_id = read_u16_endian(src, big_endian)?;
-
-                    let layer_type = XmacMaterialLayerType::try_from(read_u8(src)?)?;
-                    let blend_mode = XmacLayerBlendMode::try_from(read_u8(src)?)?;
-
-                    let texture = read_xmac_str(src, big_endian)?;
-
-                    layers.push(XmacStandardMaterialLayer {
-                        texture,
-                        ty: layer_type,
-                        amount,
-                        u_offset,
-                        v_offset,
-                        u_tiling,
-                        v_tiling,
-                        rotation_rads,
-                        blend_mode,
-                        material_id,
-                    });
+                    let layer = XmacStandardMaterialLayer::load(src, big_endian)?;
+                    layers.push(layer);
                 }
                 Ok(Some(Self {
                     name: material_name,
@@ -204,5 +181,32 @@ impl XmacStdMaterial {
         ty: XmacMaterialLayerType,
     ) -> Option<&XmacStandardMaterialLayer> {
         self.layers.iter().find(|l| l.ty == ty)
+    }
+}
+
+impl XmacStandardMaterialLayer {
+    fn load<R: ArchiveReadTarget>(src: &mut R, big_endian: bool) -> Result<Self> {
+        let amount = read_f32_endian(src, big_endian)?;
+        let u_offset = read_f32_endian(src, big_endian)?;
+        let v_offset = read_f32_endian(src, big_endian)?;
+        let u_tiling = read_f32_endian(src, big_endian)?;
+        let v_tiling = read_f32_endian(src, big_endian)?;
+        let rotation_rads = read_f32_endian(src, big_endian)?;
+        let material_id = read_u16_endian(src, big_endian)?;
+        let layer_type = XmacMaterialLayerType::try_from(read_u8(src)?)?;
+        let blend_mode = XmacLayerBlendMode::try_from(read_u8(src)?)?;
+        let texture = read_xmac_str(src, big_endian)?;
+        Ok(XmacStandardMaterialLayer {
+            texture,
+            ty: layer_type,
+            amount,
+            u_offset,
+            v_offset,
+            u_tiling,
+            v_tiling,
+            rotation_rads,
+            blend_mode,
+            material_id,
+        })
     }
 }

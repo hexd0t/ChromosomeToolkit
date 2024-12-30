@@ -65,13 +65,15 @@ impl XmacFile {
         let res = ResourceFile::load(src)?;
 
         assert_eq!(&res.data_revision, &R1_REV);
-        assert_eq!(&res.raw_file_ext, &R1_RAW_EXT);
+        assert_eq!(&res.raw_file_ext[0..5], &R1_RAW_EXT[0..5]); //the last 3 bytes sometimes differ
         assert_eq!(&res.class_name, &R1_CLASS);
 
         let chunks = Self::load_xmac(src)?;
 
         let trail = read_u64(src)?;
-        assert_eq!(trail, 0);
+        if trail != 0 {
+            println!("Note: Trail is nonzero");
+        }
 
         Ok(XmacFile { res, chunks })
     }

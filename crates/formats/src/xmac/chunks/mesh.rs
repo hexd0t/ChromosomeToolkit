@@ -90,7 +90,8 @@ impl XmacMesh {
                 let node_id = XmacNodeId(read_u32_endian(src, big_endian)?);
                 let orig_verts_count = read_u32_endian(src, big_endian)?;
                 let total_vertices_count = read_u32_endian(src, big_endian)?;
-                let _total_indices_count = read_u32_endian(src, big_endian)?;
+                let total_indices_count = read_u32_endian(src, big_endian)?;
+                eprintln!("{total_vertices_count}");
 
                 let submesh_count = read_u32_endian(src, big_endian)?;
                 let layer_count = read_u32_endian(src, big_endian)?;
@@ -109,9 +110,16 @@ impl XmacMesh {
                 }
 
                 let mut submeshes = Vec::with_capacity(submesh_count as usize);
+                let mut loaded_indices = 0;
+                let mut used_vertices = 0;
                 for _mesh_idx in 0..submesh_count {
-                    submeshes.push(XmacMeshSubmesh::load(src, big_endian)?);
+                    let submesh = XmacMeshSubmesh::load(src, big_endian)?;
+                    loaded_indices += submesh.indices.len();
+                    used_vertices += submesh.vertices_count;
+                    submeshes.push(submesh);
                 }
+                assert_eq!(loaded_indices, total_indices_count as usize);
+                assert_eq!(used_vertices, total_vertices_count);
 
                 Ok(Some(Self {
                     vertex_attribute_layers: layers,

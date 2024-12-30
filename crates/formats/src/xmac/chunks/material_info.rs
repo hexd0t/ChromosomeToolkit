@@ -47,4 +47,11 @@ impl XmacMaterialInfo {
             }
         }
     }
+
+    pub fn new(std_mat_count: usize) -> Self {
+        Self {
+            std_materials: std_mat_count,
+            fx_materials: 0,
+        }
+    }
 }

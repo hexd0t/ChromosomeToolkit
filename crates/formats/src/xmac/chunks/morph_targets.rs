@@ -13,6 +13,7 @@ use crate::xmac::read_xmac_str;
 #[derive(Debug, Deserialize, Serialize)]
 pub struct XmacMorphTargets {
     pub targets: Vec<MorphTarget>,
+    /// always 0 for R1
     pub unknown: u32,
 }
 
@@ -26,6 +27,7 @@ pub struct MorphTarget {
     pub mesh_deform_deltas: Vec<MeshDeformDeltas>,
     pub phoneme_set: PhonemeSet,
 
+    /// always 0 for R1
     pub unknown1: u32,
 }
 

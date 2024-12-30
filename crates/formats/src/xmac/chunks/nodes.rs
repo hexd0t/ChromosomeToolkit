@@ -11,7 +11,7 @@ use crate::archive::ArchiveReadTarget;
 use crate::binimport::BinImport;
 use crate::error::*;
 use crate::helpers::*;
-use crate::types::{Mat4, Quat, Vec2, Vec3, Vec4};
+use crate::types::{Mat4, Quat, Vec3, Vec4};
 
 #[derive(Debug, Deserialize, Serialize, Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct XmacNodeId(pub u32);
@@ -25,16 +25,22 @@ pub struct XmacNodes {
 pub struct XmacNode {
     pub name: String,
     pub rotation: Quat,
+    /// [0, 0, 0, 1] for nearly everything but root- and slot-nodes,
+    /// so probably something about lining multiple meshes up
     pub unknown1: Vec4,
     pub local_pos: Vec3,
     pub local_scale: Vec3,
+    /// always [-1, -1, -1] for R1
     pub unknown2: Vec3,
-    pub unknown3: Vec2,
+    /// always -1 for R1
+    pub unknown3: i32,
+    /// always -1 for R1
+    pub unknown4: i32,
     pub parent_idx: Option<usize>,
     pub child_count: u32,
     pub flags: XmacNodeFlags,
-    pub unknown4: [u8; 3],
-    pub unknown5: f32,
+    pub unknown5: [u8; 3],
+    pub unknown6: f32,
     pub oriented_bounding_box: glam::Mat4,
 }
 
@@ -48,6 +54,12 @@ bitflags! {
         const Attachment = 0x2;
         /// Indicates if this node is a critical node. A critical node is always included the skeleton and cannot be optimized out (false on default).
         const Critical = 0x4;
+
+        const Unknown08 = 0x8;
+        const Unknown10 = 0x10;
+        const Unknown20 = 0x20;
+        const Unknown40 = 0x40;
+        const Unknown80 = 0x80;
     }
 }
 
@@ -70,7 +82,8 @@ impl XmacNodes {
                     let local_pos = Vec3::load_endian(src, big_endian)?;
                     let local_scale = Vec3::load_endian(src, big_endian)?;
                     let unknown2 = Vec3::load_endian(src, big_endian)?;
-                    let unknown3 = Vec2::load_endian(src, big_endian)?;
+                    let unknown3 = read_i32_endian(src, big_endian)?;
+                    let unknown4 = read_i32_endian(src, big_endian)?;
 
                     let parent_idx = read_i32_endian(src, big_endian)?;
                     let parent_idx = if parent_idx == -1 {
@@ -88,11 +101,11 @@ impl XmacNodes {
                         ))
                     })?;
 
-                    let mut unknown4 = [0; 3];
-                    src.read_exact(&mut unknown4)?;
+                    let mut unknown5 = [0; 3];
+                    src.read_exact(&mut unknown5)?;
 
                     // might be the other way around:
-                    let unknown5 = read_f32_endian(src, big_endian)?;
+                    let unknown6 = read_f32_endian(src, big_endian)?;
                     let oriented_bounding_box = Mat4::load(src)?;
 
                     let node_name = read_xmac_str(src, big_endian)?;
@@ -105,11 +118,12 @@ impl XmacNodes {
                         local_scale,
                         unknown2,
                         unknown3,
+                        unknown4,
                         parent_idx,
                         child_count,
                         flags,
-                        unknown4,
                         unknown5,
+                        unknown6,
                         oriented_bounding_box,
                     });
                 }
@@ -128,6 +142,29 @@ impl XmacNodes {
                 );
                 Ok(None)
             }
+        }
+    }
+}
+
+impl XmacNode {
+    pub fn new(name: String, local_trans: Mat4, parent_idx: Option<usize>) -> Self {
+        let (mut local_scale, rotation, local_pos) = local_trans.to_scale_rotation_translation();
+        local_scale = 1.0 / local_scale; //Scale is inverted for some reason
+        Self {
+            name,
+            rotation,
+            unknown1: Vec4::new(0.0, 0.0, 0.0, 1.0),
+            local_pos,
+            local_scale,
+            unknown2: Vec3::new(-1.0, -1.0, -1.0),
+            unknown3: -1,
+            unknown4: -1,
+            parent_idx,
+            child_count: 0,
+            flags: XmacNodeFlags::Critical | XmacNodeFlags::IncludeInBoundsCalc,
+            unknown5: [0, 0, 0],
+            unknown6: 0.0,
+            oriented_bounding_box: Mat4::IDENTITY,
         }
     }
 }

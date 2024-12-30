@@ -18,13 +18,17 @@ pub struct XmacSkinningInfo {
     pub table_entries: Vec<TableEntry>,
 
     pub local_bones: u32,
-    pub unknown: u32,
+    pub is_for_collision_mesh: bool,
+    pub unknown1: u8,
+    pub unknown2: u8,
+    pub unknown3: u8,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct SkinInfluence {
     pub weight: f32,
     pub node_idx: u16,
+    /// Always the same for all Influences in a skin
     pub unknown: u16,
 }
 
@@ -50,8 +54,11 @@ impl XmacSkinningInfo {
                 let node_id = XmacNodeId(read_u32_endian(src, big_endian)?);
                 let local_bones = read_u32_endian(src, big_endian)?;
                 let total_influences = read_u32_endian(src, big_endian)?;
-                //let is_for_collision_mesh = read_bool(src)?;
-                let unknown = read_u32_endian(src, big_endian)?;
+                let is_for_collision_mesh = read_bool(src)?;
+
+                let unknown1 = read_u8(src)?;
+                let unknown2 = read_u8(src)?;
+                let unknown3 = read_u8(src)?;
 
                 let mut influences = Vec::with_capacity(total_influences as usize);
                 for _idx in 0..total_influences {
@@ -75,7 +82,10 @@ impl XmacSkinningInfo {
                     influences,
                     table_entries,
                     local_bones,
-                    unknown,
+                    is_for_collision_mesh,
+                    unknown1,
+                    unknown2,
+                    unknown3,
                 }))
             }
             ver => {
