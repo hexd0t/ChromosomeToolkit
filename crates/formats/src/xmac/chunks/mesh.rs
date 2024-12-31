@@ -149,6 +149,7 @@ impl XmacMesh {
         dst: &mut W,
         big_endian: bool,
     ) -> Result<XmacChunkMeta> {
+        println!("Saving MESH chunk...");
         write_u32_endian(dst, self.node_id.0, big_endian)?;
         write_u32_endian(dst, self.orig_verts_count, big_endian)?;
         let total_verts = self.get_position_attrib().unwrap().len();

@@ -87,6 +87,7 @@ impl XmacInfo {
         dst: &mut W,
         big_endian: bool,
     ) -> Result<XmacChunkMeta> {
+        println!("Saving INFO chunk...");
         write_i32_endian(dst, self.unknown1, big_endian)?;
         write_i32_endian(dst, self.retarget_root_node_index, big_endian)?;
         write_u8(dst, self.exporter_maj)?;

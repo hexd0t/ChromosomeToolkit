@@ -183,6 +183,7 @@ impl XmacStdMaterial {
         dst: &mut W,
         big_endian: bool,
     ) -> Result<XmacChunkMeta> {
+        println!("Saving STD MATERIAL chunk...");
         self.ambient_color.save_endian(dst, big_endian)?;
         self.diffuse_color.save_endian(dst, big_endian)?;
         self.specular_color.save_endian(dst, big_endian)?;
@@ -251,10 +252,11 @@ impl XmacStandardMaterialLayer {
         write_f32_endian(dst, self.u_tiling, big_endian)?;
         write_f32_endian(dst, self.v_tiling, big_endian)?;
         write_f32_endian(dst, self.rotation_rads, big_endian)?;
+
         write_u16_endian(dst, self.material_id, big_endian)?;
         write_u8(dst, self.ty.into())?;
         write_u8(dst, self.blend_mode.into())?;
-        let mut written = 4 + 4 + 4 + 4 + 4 + 4 + 8 + 1 + 1;
+        let mut written = 6 * 4 + 2 + 1 + 1;
         written += write_xmac_str(dst, &self.texture, big_endian)?;
 
         Ok(written)

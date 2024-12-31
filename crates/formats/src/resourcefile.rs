@@ -18,11 +18,8 @@ const PROP_VERSION: u16 = 201;
 pub struct ResourceFile {
     pub timestamp: DateTime,
     pub props: Vec<Property>,
-    #[serde(skip)]
     pub data_revision: [u8; 4],
-    #[serde(skip)]
     pub class_name: String,
-    #[serde(skip)]
     pub raw_file_ext: [u8; 8],
 }
 

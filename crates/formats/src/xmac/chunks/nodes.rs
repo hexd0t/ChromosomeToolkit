@@ -44,7 +44,19 @@ pub struct XmacNode {
     pub flags: XmacNodeFlags,
     pub unknown5: [u8; 3],
     pub unknown6: f32,
+    #[serde(deserialize_with = "deserialize_mat4_with_nan")]
     pub oriented_bounding_box: glam::Mat4,
+}
+
+fn deserialize_mat4_with_nan<'de, D: serde::Deserializer<'de>>(
+    des: D,
+) -> std::result::Result<glam::Mat4, D::Error> {
+    let optionals = <[Option<f32>; 16]>::deserialize(des)?;
+    let mut nans = [0.0; 16];
+    for i in 0..16 {
+        nans[i] = optionals[i].unwrap_or(f32::NAN)
+    }
+    Ok(Mat4::from_cols_array(&nans))
 }
 
 bitflags! {
@@ -106,6 +118,7 @@ impl XmacNodes {
         dst: &mut W,
         big_endian: bool,
     ) -> Result<XmacChunkMeta> {
+        println!("Saving NODES chunk...");
         write_u32_endian(dst, self.nodes.len() as u32, big_endian)?;
         write_u32_endian(
             dst,
@@ -193,7 +206,7 @@ impl XmacNode {
         written += 4 + 4 + 4 + 4 + 1 + 3 + 4;
 
         self.oriented_bounding_box.save_endian(dst, big_endian)?;
-        written += 16;
+        written += 4 * 16;
         written += write_xmac_str(dst, &self.name, big_endian)?;
         Ok(written)
     }

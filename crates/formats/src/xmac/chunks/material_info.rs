@@ -55,6 +55,7 @@ impl XmacMaterialInfo {
         dst: &mut W,
         big_endian: bool,
     ) -> Result<XmacChunkMeta> {
+        println!("Saving MATERIAL INFO chunk...");
         write_u32_endian(
             dst,
             (self.std_materials + self.fx_materials) as u32,

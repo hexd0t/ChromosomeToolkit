@@ -6,7 +6,9 @@ use serde::Serialize;
 use super::mesh::XmacMesh;
 use super::nodes::XmacNodeId;
 use super::XmacChunkMeta;
+use super::XmacChunkType;
 use crate::archive::ArchiveReadTarget;
+use crate::archive::ArchiveWriteTarget;
 use crate::error::*;
 use crate::helpers::*;
 
@@ -19,9 +21,7 @@ pub struct XmacSkinningInfo {
 
     pub local_bones: u32,
     pub is_for_collision_mesh: bool,
-    pub unknown1: u8,
-    pub unknown2: u8,
-    pub unknown3: u8,
+    pub unknown1: [u8; 3],
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -56,9 +56,7 @@ impl XmacSkinningInfo {
                 let total_influences = read_u32_endian(src, big_endian)?;
                 let is_for_collision_mesh = read_bool(src)?;
 
-                let unknown1 = read_u8(src)?;
-                let unknown2 = read_u8(src)?;
-                let unknown3 = read_u8(src)?;
+                let unknown1 = [read_u8(src)?, read_u8(src)?, read_u8(src)?];
 
                 let mut influences = Vec::with_capacity(total_influences as usize);
                 for _idx in 0..total_influences {
@@ -84,8 +82,6 @@ impl XmacSkinningInfo {
                     local_bones,
                     is_for_collision_mesh,
                     unknown1,
-                    unknown2,
-                    unknown3,
                 }))
             }
             ver => {
@@ -96,6 +92,33 @@ impl XmacSkinningInfo {
                 Ok(None)
             }
         }
+    }
+    pub fn save<W: ArchiveWriteTarget>(
+        &self,
+        dst: &mut W,
+        big_endian: bool,
+    ) -> Result<XmacChunkMeta> {
+        println!("Saving SKINNING INFO chunk...");
+        write_u32_endian(dst, self.node_id.0, big_endian)?;
+        write_u32_endian(dst, self.local_bones, big_endian)?;
+        write_u32_endian(dst, self.influences.len() as u32, big_endian)?;
+        write_bool(dst, self.is_for_collision_mesh)?;
+        dst.write_all(&self.unknown1)?;
+        let mut written = 4 + 4 + 4 + 1 + 3;
+
+        for influence in &self.influences {
+            written += influence.save(dst, big_endian)?;
+        }
+
+        for table_entry in &self.table_entries {
+            written += table_entry.save(dst, big_endian)?;
+        }
+
+        Ok(XmacChunkMeta {
+            type_id: XmacChunkType::SkinningInfo.into(),
+            size: written as u32,
+            version: 3,
+        })
     }
 }
 
@@ -110,6 +133,13 @@ impl SkinInfluence {
             unknown,
         })
     }
+    pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W, big_endian: bool) -> Result<usize> {
+        write_f32_endian(dst, self.weight, big_endian)?;
+        write_u16_endian(dst, self.node_idx, big_endian)?;
+        write_u16_endian(dst, self.unknown, big_endian)?;
+
+        Ok(4 + 2 + 2)
+    }
 }
 
 impl TableEntry {
@@ -120,5 +150,11 @@ impl TableEntry {
             start_idx,
             num_elements,
         })
+    }
+    pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W, big_endian: bool) -> Result<usize> {
+        write_u32_endian(dst, self.start_idx, big_endian)?;
+        write_u32_endian(dst, self.num_elements, big_endian)?;
+
+        Ok(4 + 4)
     }
 }

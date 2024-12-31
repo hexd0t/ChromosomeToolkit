@@ -8,6 +8,8 @@ use std::{
     time::SystemTime,
 };
 
+use formats::xmac::XmacFile;
+
 mod translation;
 
 fn main() {
@@ -41,17 +43,25 @@ fn main() {
             .ok()
             .and_then(|meta| meta.modified().ok())
             .unwrap_or_else(SystemTime::now);
-        let (gltf, buffer, textures) = gltf::import(path).unwrap();
 
         let out_arg = arg
             .replace(".gltf", "_out._xmac")
-            .replace(".glb", "_out._xmac");
+            .replace(".glb", "_out._xmac")
+            .replace("._xmac.json", "_out._xmac");
         if out_arg == arg {
             panic!("In == out path");
         }
-
-        let xmac = translation::gltf_to_xmac(gltf, buffer, textures, file_time).unwrap();
-        println!("Translation done");
+        let xmac: XmacFile = if arg.ends_with("._xmac.json") {
+            println!("Converting intermediate data...");
+            let in_data = std::fs::File::open(path).unwrap();
+            let in_data = std::io::BufReader::new(in_data);
+            serde_json::from_reader(in_data).unwrap()
+        } else {
+            let (gltf, buffer, textures) = gltf::import(path).unwrap();
+            let result = translation::gltf_to_xmac(gltf, buffer, textures, file_time).unwrap();
+            println!("Translation done");
+            result
+        };
 
         let out_os = OsString::from(&out_arg);
         let out_path = Path::new(&out_os);

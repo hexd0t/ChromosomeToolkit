@@ -89,6 +89,7 @@ impl XmacFile {
 
         self.res.save(dst, data.len())?;
         dst.write_all(&data)?;
+        write_u64(dst, 0)?;
 
         Ok(())
     }
@@ -123,6 +124,11 @@ impl XmacFile {
 
     pub fn sanity_check(&self) -> Result<()> {
         self.sanity_check_chunk_counts()
+        // ToDo:
+        // - Check joints exist
+        // - Check Skins reference existing Meshes
+        // - Check Skin.for_collision_mesh == Mesh.collision_mesh
+        // - Skin.table_entries.len == Mesh.orig_vertex_count
     }
     fn sanity_check_chunk_counts(&self) -> Result<()> {
         let mut info_chunks = 0;
@@ -207,6 +213,7 @@ impl XmacFile {
 
         write_u32(dst, data.len() as u32)?; //this one is always little-endian
         dst.write_all(&data)?;
+
         Ok(())
     }
 

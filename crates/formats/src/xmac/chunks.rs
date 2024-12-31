@@ -182,8 +182,12 @@ impl XmacChunk {
                 xmac_std_material.save(&mut data, big_endian)?
             }
             XmacChunk::Mesh(xmac_mesh) => xmac_mesh.save(&mut data, big_endian)?,
-            XmacChunk::SkinningInfo(xmac_skinning_info) => todo!(),
-            XmacChunk::MorphTargets(xmac_morph_targets) => todo!(),
+            XmacChunk::SkinningInfo(xmac_skinning_info) => {
+                xmac_skinning_info.save(&mut data, big_endian)?
+            }
+            XmacChunk::MorphTargets(xmac_morph_targets) => {
+                xmac_morph_targets.save(&mut data, big_endian)?
+            }
             XmacChunk::Unknown(xmac_unknown_chunk) => xmac_unknown_chunk.save(&mut data)?,
         };
         let data = data.finish();
