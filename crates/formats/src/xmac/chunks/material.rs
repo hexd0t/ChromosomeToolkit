@@ -3,13 +3,16 @@ use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 
 use super::XmacChunkMeta;
+use super::XmacChunkType;
 
 use crate::archive::ArchiveReadTarget;
+use crate::archive::ArchiveWriteTarget;
 use crate::binimport::BinImport;
 use crate::error::*;
 use crate::helpers::*;
 use crate::types::Vec4;
 use crate::xmac::read_xmac_str;
+use crate::xmac::write_xmac_str;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct XmacStdMaterial {
@@ -175,6 +178,38 @@ impl XmacStdMaterial {
             }
         }
     }
+    pub fn save<W: ArchiveWriteTarget>(
+        &self,
+        dst: &mut W,
+        big_endian: bool,
+    ) -> Result<XmacChunkMeta> {
+        self.ambient_color.save_endian(dst, big_endian)?;
+        self.diffuse_color.save_endian(dst, big_endian)?;
+        self.specular_color.save_endian(dst, big_endian)?;
+        self.emissive_color.save_endian(dst, big_endian)?;
+        let mut written = 16 * 4;
+        write_f32_endian(dst, self.shine, big_endian)?;
+        write_f32_endian(dst, self.shine_strength, big_endian)?;
+        write_f32_endian(dst, self.opacity, big_endian)?;
+        write_f32_endian(dst, self.refraction_index, big_endian)?;
+        write_bool(dst, self.double_sided)?;
+        write_bool(dst, self.wireframe)?;
+        write_u8(dst, self.transparency_type.into())?;
+        write_u8(dst, self.layers.len() as u8)?;
+        written += 4 + 4 + 4 + 4 + 1 + 1 + 1 + 1;
+
+        written += write_xmac_str(dst, &self.name, big_endian)?;
+
+        for layer in &self.layers {
+            written += layer.save(dst, big_endian)?;
+        }
+
+        Ok(XmacChunkMeta {
+            type_id: XmacChunkType::StdMaterial.into(),
+            size: written as u32,
+            version: 2,
+        })
+    }
 
     pub fn get_layer_by_type(
         &self,
@@ -208,5 +243,20 @@ impl XmacStandardMaterialLayer {
             blend_mode,
             material_id,
         })
+    }
+    pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W, big_endian: bool) -> Result<usize> {
+        write_f32_endian(dst, self.amount, big_endian)?;
+        write_f32_endian(dst, self.u_offset, big_endian)?;
+        write_f32_endian(dst, self.v_offset, big_endian)?;
+        write_f32_endian(dst, self.u_tiling, big_endian)?;
+        write_f32_endian(dst, self.v_tiling, big_endian)?;
+        write_f32_endian(dst, self.rotation_rads, big_endian)?;
+        write_u16_endian(dst, self.material_id, big_endian)?;
+        write_u8(dst, self.ty.into())?;
+        write_u8(dst, self.blend_mode.into())?;
+        let mut written = 4 + 4 + 4 + 4 + 4 + 4 + 8 + 1 + 1;
+        written += write_xmac_str(dst, &self.texture, big_endian)?;
+
+        Ok(written)
     }
 }

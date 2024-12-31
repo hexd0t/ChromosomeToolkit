@@ -1,16 +1,17 @@
 use super::super::read_xmac_str;
 use super::XmacChunkMeta;
+use super::XmacChunkType;
 
 use serde::{Deserialize, Serialize};
 
 use crate::archive::ArchiveReadTarget;
+use crate::archive::ArchiveWriteTarget;
 use crate::error::*;
 use crate::helpers::*;
+use crate::xmac::write_xmac_str;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct XmacInfo {
-    // TODO: The version used by R1 carries only one of these:
-    /// the node number of the trajectory node used for motion extraction
     /// (always 1 or 0 for R1)
     pub unknown1: i32,
     /// the retargeting root node index, most likely pointing to the hip or pelvis or invalid index (-1) when not set
@@ -80,5 +81,27 @@ impl XmacInfo {
             exporter_date: env!("CARGO_PKG_VERSION").to_string(),
             actor_name: "".to_string(),
         }
+    }
+    pub fn save<W: ArchiveWriteTarget>(
+        &self,
+        dst: &mut W,
+        big_endian: bool,
+    ) -> Result<XmacChunkMeta> {
+        write_i32_endian(dst, self.unknown1, big_endian)?;
+        write_i32_endian(dst, self.retarget_root_node_index, big_endian)?;
+        write_u8(dst, self.exporter_maj)?;
+        write_u8(dst, self.exporter_min)?;
+        write_u16_endian(dst, self.unknown2, big_endian)?;
+        write_u32_endian(dst, self.unknown3, big_endian)?;
+        let mut written = 4 + 4 + 1 + 1 + 2 + 4;
+        written += write_xmac_str(dst, &self.source_application, big_endian)?;
+        written += write_xmac_str(dst, &self.orig_filename, big_endian)?;
+        written += write_xmac_str(dst, &self.exporter_date, big_endian)?;
+        written += write_xmac_str(dst, &self.actor_name, big_endian)?;
+        Ok(XmacChunkMeta {
+            type_id: XmacChunkType::Info.into(),
+            size: written as u32,
+            version: 2,
+        })
     }
 }

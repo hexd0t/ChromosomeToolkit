@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 use super::XmacChunkMeta;
+use super::XmacChunkType;
 
 use crate::archive::ArchiveReadTarget;
+use crate::archive::ArchiveWriteTarget;
 use crate::error::*;
 use crate::helpers::*;
 
@@ -46,6 +48,25 @@ impl XmacMaterialInfo {
                 Ok(None)
             }
         }
+    }
+
+    pub fn save<W: ArchiveWriteTarget>(
+        &self,
+        dst: &mut W,
+        big_endian: bool,
+    ) -> Result<XmacChunkMeta> {
+        write_u32_endian(
+            dst,
+            (self.std_materials + self.fx_materials) as u32,
+            big_endian,
+        )?;
+        write_u32_endian(dst, self.std_materials as u32, big_endian)?;
+        write_u32_endian(dst, self.fx_materials as u32, big_endian)?;
+        Ok(XmacChunkMeta {
+            type_id: XmacChunkType::MaterialInfo.into(),
+            size: 12,
+            version: 1,
+        })
     }
 
     pub fn new(std_mat_count: usize) -> Self {

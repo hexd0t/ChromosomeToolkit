@@ -20,6 +20,7 @@ use std::{io::Write, time::SystemTime};
 
 use chunks::{
     material::XmacStdMaterial,
+    material_info::XmacMaterialInfo,
     mesh::XmacMesh,
     morph_targets::XmacMorphTargets,
     nodes::{XmacNodeId, XmacNodes},
@@ -120,7 +121,72 @@ impl XmacFile {
         Ok(chunks)
     }
 
+    pub fn sanity_check(&self) -> Result<()> {
+        self.sanity_check_chunk_counts()
+    }
+    fn sanity_check_chunk_counts(&self) -> Result<()> {
+        let mut info_chunks = 0;
+        let mut nodes_chunks = 0;
+        let mut mat_info_chunks = 0;
+        let mut std_mat_chunks = 0;
+        let mut mesh_chunks = 0;
+        let mut skin_chunks = 0;
+        let mut morph_chunks = 0;
+        for chunk in &self.chunks {
+            match chunk {
+                XmacChunk::Info(_) => info_chunks += 1,
+                XmacChunk::Nodes(_) => nodes_chunks += 1,
+                XmacChunk::MaterialInfo(_) => mat_info_chunks += 1,
+                XmacChunk::StdMaterial(_) => std_mat_chunks += 1,
+                XmacChunk::Mesh(_) => mesh_chunks += 1,
+                XmacChunk::SkinningInfo(_) => skin_chunks += 1,
+                XmacChunk::MorphTargets(_) => morph_chunks += 1,
+                XmacChunk::Unknown(_) => {}
+            }
+        }
+        if info_chunks != 1 {
+            return Err(Error::InvalidStructure(format!(
+                "Expected 1 Info chunk, found {info_chunks}"
+            )));
+        }
+        if nodes_chunks != 1 {
+            return Err(Error::InvalidStructure(format!(
+                "Expected 1 Nodes chunk, found {nodes_chunks}"
+            )));
+        }
+        if mat_info_chunks != 1 {
+            return Err(Error::InvalidStructure(format!(
+                "Expected 1 Material Info chunk, found {mat_info_chunks}"
+            )));
+        }
+        let mat_info = self.get_material_info_chunk().unwrap();
+        if std_mat_chunks != mat_info.std_materials {
+            return Err(Error::InvalidStructure(format!(
+                "Expected {} Standard Material chunk, found {std_mat_chunks}",
+                mat_info.std_materials
+            )));
+        }
+        if mesh_chunks == 0 {
+            return Err(Error::InvalidStructure(format!(
+                "Expected at least 1 Mesh chunk, found {mesh_chunks}"
+            )));
+        }
+        if skin_chunks > mesh_chunks {
+            return Err(Error::InvalidStructure(format!(
+                "Expected at most {mesh_chunks} Skin chunks, found {skin_chunks}"
+            )));
+        }
+        if morph_chunks > mesh_chunks {
+            return Err(Error::InvalidStructure(format!(
+                "Expected at most {mesh_chunks} Skin chunks, found {morph_chunks}"
+            )));
+        }
+        Ok(())
+    }
+
     pub fn save_xmac<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<()> {
+        self.sanity_check()?;
+
         let mut data = TempWriteTarget::new(dst);
         data.write_all(&XMAC_MAGIC)?;
         // Version Maj:
@@ -181,6 +247,17 @@ impl XmacFile {
         self.chunks.iter().find_map(get_mesh_chunk)
     }
 
+    pub fn get_material_info_chunk(&self) -> Option<&XmacMaterialInfo> {
+        fn get_material_info_chunk(chunk: &XmacChunk) -> Option<&XmacMaterialInfo> {
+            if let XmacChunk::MaterialInfo(matinf) = chunk {
+                Some(matinf)
+            } else {
+                None
+            }
+        }
+        self.chunks.iter().find_map(get_material_info_chunk)
+    }
+
     pub fn get_material_chunks(&self) -> Vec<&XmacStdMaterial> {
         fn get_material_chunk(chunk: &XmacChunk) -> Option<&XmacStdMaterial> {
             if let XmacChunk::StdMaterial(mat) = chunk {
@@ -236,4 +313,18 @@ fn read_xmac_str<R: ArchiveReadTarget>(src: &mut R, big_endian: bool) -> Result<
     } else {
         Err(Error::InvalidString(format!("{:x?}", str_buf)))
     }
+}
+
+fn write_xmac_str<W: ArchiveWriteTarget>(
+    dst: &mut W,
+    content: &str,
+    big_endian: bool,
+) -> Result<usize> {
+    let (str_buf, _, unmappable) = encoding_rs::WINDOWS_1252.encode(content);
+    write_u32_endian(dst, str_buf.len() as u32, big_endian)?;
+    dst.write_all(&str_buf)?;
+    if unmappable {
+        println!("Warning: String '{content}' contains unmappable characters!");
+    }
+    Ok(str_buf.len() + 4)
 }

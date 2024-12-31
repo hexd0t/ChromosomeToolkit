@@ -7,11 +7,14 @@ use serde::{Deserialize, Serialize};
 use super::super::read_xmac_str;
 
 use super::XmacChunkMeta;
+use super::XmacChunkType;
 use crate::archive::ArchiveReadTarget;
+use crate::archive::ArchiveWriteTarget;
 use crate::binimport::BinImport;
 use crate::error::*;
 use crate::helpers::*;
 use crate::types::{Mat4, Quat, Vec3, Vec4};
+use crate::xmac::write_xmac_str;
 
 #[derive(Debug, Deserialize, Serialize, Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct XmacNodeId(pub u32);
@@ -77,55 +80,9 @@ impl XmacNodes {
                 let root_count = read_u32_endian(src, big_endian)? as usize;
                 let mut nodes = Vec::with_capacity(node_count);
                 for _idx in 0..node_count {
-                    let rotation = Quat::load_endian(src, big_endian)?;
-                    let unknown1 = Vec4::load_endian(src, big_endian)?;
-                    let local_pos = Vec3::load_endian(src, big_endian)?;
-                    let local_scale = Vec3::load_endian(src, big_endian)?;
-                    let unknown2 = Vec3::load_endian(src, big_endian)?;
-                    let unknown3 = read_i32_endian(src, big_endian)?;
-                    let unknown4 = read_i32_endian(src, big_endian)?;
+                    let node = XmacNode::load(src, big_endian)?;
 
-                    let parent_idx = read_i32_endian(src, big_endian)?;
-                    let parent_idx = if parent_idx == -1 {
-                        None
-                    } else {
-                        Some(parent_idx as usize)
-                    };
-                    let child_count = read_u32_endian(src, big_endian)?;
-
-                    let flags = read_u8(src)?;
-                    let flags = XmacNodeFlags::from_bits(flags).ok_or_else(|| {
-                        Error::EnumUnparsable(format!(
-                            "Parsing XmacNodeFlags failed, invalid value {flags:02x}@{:x}",
-                            src.stream_position().unwrap_or_default()
-                        ))
-                    })?;
-
-                    let mut unknown5 = [0; 3];
-                    src.read_exact(&mut unknown5)?;
-
-                    // might be the other way around:
-                    let unknown6 = read_f32_endian(src, big_endian)?;
-                    let oriented_bounding_box = Mat4::load(src)?;
-
-                    let node_name = read_xmac_str(src, big_endian)?;
-
-                    nodes.push(XmacNode {
-                        name: node_name,
-                        rotation,
-                        unknown1,
-                        local_pos,
-                        local_scale,
-                        unknown2,
-                        unknown3,
-                        unknown4,
-                        parent_idx,
-                        child_count,
-                        flags,
-                        unknown5,
-                        unknown6,
-                        oriented_bounding_box,
-                    });
+                    nodes.push(node);
                 }
                 let actual_root_nodes = nodes.iter().filter(|n| n.parent_idx.is_none()).count();
                 if root_count != actual_root_nodes {
@@ -144,9 +101,103 @@ impl XmacNodes {
             }
         }
     }
+    pub fn save<W: ArchiveWriteTarget>(
+        &self,
+        dst: &mut W,
+        big_endian: bool,
+    ) -> Result<XmacChunkMeta> {
+        write_u32_endian(dst, self.nodes.len() as u32, big_endian)?;
+        write_u32_endian(
+            dst,
+            self.nodes.iter().filter(|n| n.parent_idx.is_none()).count() as u32,
+            big_endian,
+        )?;
+        let mut written = 8;
+        for node in &self.nodes {
+            written += node.save(dst, big_endian)?;
+        }
+        Ok(XmacChunkMeta {
+            type_id: XmacChunkType::Nodes.into(),
+            size: written as u32,
+            version: 1,
+        })
+    }
 }
 
 impl XmacNode {
+    fn load<R: ArchiveReadTarget>(src: &mut R, big_endian: bool) -> Result<XmacNode> {
+        let rotation = Quat::load_endian(src, big_endian)?;
+        let unknown1 = Vec4::load_endian(src, big_endian)?;
+        let local_pos = Vec3::load_endian(src, big_endian)?;
+        let local_scale = Vec3::load_endian(src, big_endian)?;
+        let unknown2 = Vec3::load_endian(src, big_endian)?;
+        let unknown3 = read_i32_endian(src, big_endian)?;
+        let unknown4 = read_i32_endian(src, big_endian)?;
+        let parent_idx = read_i32_endian(src, big_endian)?;
+        let parent_idx = if parent_idx == -1 {
+            None
+        } else {
+            Some(parent_idx as usize)
+        };
+        let child_count = read_u32_endian(src, big_endian)?;
+        let flags = read_u8(src)?;
+        let flags = XmacNodeFlags::from_bits(flags).ok_or_else(|| {
+            Error::EnumUnparsable(format!(
+                "Parsing XmacNodeFlags failed, invalid value {flags:02x}@{:x}",
+                src.stream_position().unwrap_or_default()
+            ))
+        })?;
+        let mut unknown5 = [0; 3];
+        src.read_exact(&mut unknown5)?;
+        let unknown6 = read_f32_endian(src, big_endian)?;
+        let oriented_bounding_box = Mat4::load(src)?;
+        let node_name = read_xmac_str(src, big_endian)?;
+        let node = XmacNode {
+            name: node_name,
+            rotation,
+            unknown1,
+            local_pos,
+            local_scale,
+            unknown2,
+            unknown3,
+            unknown4,
+            parent_idx,
+            child_count,
+            flags,
+            unknown5,
+            unknown6,
+            oriented_bounding_box,
+        };
+        Ok(node)
+    }
+
+    fn save<W: ArchiveWriteTarget>(&self, dst: &mut W, big_endian: bool) -> Result<usize> {
+        self.rotation.save_endian(dst, big_endian)?;
+        self.unknown1.save_endian(dst, big_endian)?;
+        self.local_pos.save_endian(dst, big_endian)?;
+        self.local_scale.save_endian(dst, big_endian)?;
+        self.unknown2.save_endian(dst, big_endian)?;
+        let mut written = 16 + 16 + 12 + 12 + 12;
+
+        write_i32_endian(dst, self.unknown3, big_endian)?;
+        write_i32_endian(dst, self.unknown4, big_endian)?;
+        write_i32_endian(
+            dst,
+            self.parent_idx.map(|i| i as i32).unwrap_or(-1),
+            big_endian,
+        )?;
+        write_u32_endian(dst, self.child_count, big_endian)?;
+        write_u8(dst, self.flags.bits())?;
+        dst.write_all(&self.unknown5)?;
+        write_f32_endian(dst, self.unknown6, big_endian)?;
+        written += 4 + 4 + 4 + 4 + 1 + 3 + 4;
+
+        self.oriented_bounding_box.save_endian(dst, big_endian)?;
+        written += 16;
+        written += write_xmac_str(dst, &self.name, big_endian)?;
+        Ok(written)
+    }
+
     pub fn new(name: String, local_trans: Mat4, parent_idx: Option<usize>) -> Self {
         let (mut local_scale, rotation, local_pos) = local_trans.to_scale_rotation_translation();
         local_scale = 1.0 / local_scale; //Scale is inverted for some reason

@@ -4,8 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use super::nodes::XmacNodeId;
 use super::XmacChunkMeta;
+use super::XmacChunkType;
 
 use crate::archive::ArchiveReadTarget;
+use crate::archive::ArchiveWriteTarget;
 use crate::binimport::BinImport;
 use crate::error::*;
 use crate::helpers::*;
@@ -20,7 +22,8 @@ pub struct XmacMesh {
 
     pub node_id: XmacNodeId,
     pub orig_verts_count: u32,
-    pub unknown1: u32,
+    pub is_collision_mesh: bool,
+    pub unknown1: [u8; 3],
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -91,13 +94,13 @@ impl XmacMesh {
                 let orig_verts_count = read_u32_endian(src, big_endian)?;
                 let total_vertices_count = read_u32_endian(src, big_endian)?;
                 let total_indices_count = read_u32_endian(src, big_endian)?;
-                eprintln!("{total_vertices_count}");
 
                 let submesh_count = read_u32_endian(src, big_endian)?;
                 let layer_count = read_u32_endian(src, big_endian)?;
-                // let is_collision_mesh = read_bool(src)?;
-                // let is_triangle_mesh = read_bool(src)?;
-                let unknown = read_u32_endian(src, big_endian)?;
+                let is_collision_mesh = read_bool(src)?;
+
+                let mut unknown1 = [0u8; 3];
+                src.read_exact(&mut unknown1)?;
 
                 let mut layers = Vec::with_capacity(layer_count as usize);
                 for _layer_idx in 0..layer_count {
@@ -126,7 +129,8 @@ impl XmacMesh {
                     submeshes,
                     node_id,
                     orig_verts_count,
-                    unknown1: unknown,
+                    unknown1,
+                    is_collision_mesh,
                 }))
             }
 
@@ -138,6 +142,38 @@ impl XmacMesh {
                 Ok(None)
             }
         }
+    }
+
+    pub fn save<W: ArchiveWriteTarget>(
+        &self,
+        dst: &mut W,
+        big_endian: bool,
+    ) -> Result<XmacChunkMeta> {
+        write_u32_endian(dst, self.node_id.0, big_endian)?;
+        write_u32_endian(dst, self.orig_verts_count, big_endian)?;
+        let total_verts = self.get_position_attrib().unwrap().len();
+        write_u32_endian(dst, total_verts as u32, big_endian)?;
+        let total_indices: usize = self.submeshes.iter().map(|s| s.indices.len()).sum();
+        write_u32_endian(dst, total_indices as u32, big_endian)?;
+
+        write_u32_endian(dst, self.submeshes.len() as u32, big_endian)?;
+        write_u32_endian(dst, self.vertex_attribute_layers.len() as u32, big_endian)?;
+        write_bool(dst, self.is_collision_mesh)?;
+        // let is_triangle_mesh = read_bool(src)?;
+        dst.write_all(&self.unknown1)?;
+        let mut written = 4 + 4 + 4 + 4 + 4 + 4 + 1 + 3;
+        for layer in &self.vertex_attribute_layers {
+            written += layer.save(dst, big_endian)?;
+        }
+        for submesh in &self.submeshes {
+            written += submesh.save(dst, big_endian)?;
+        }
+
+        Ok(XmacChunkMeta {
+            type_id: XmacChunkType::Mesh.into(),
+            size: written as u32,
+            version: 1,
+        })
     }
 
     pub fn get_position_attrib(&self) -> Option<&Vec<Vec3>> {
@@ -212,17 +248,7 @@ impl XmacMeshAttribLayer {
         let layer_type = read_u32_endian(src, big_endian)?;
         let layer_type = XmacMeshAttribLayerType::try_from(layer_type)?;
         let attrib_size = read_u32_endian(src, big_endian)?;
-        let expected_attrib_size = match &layer_type {
-            XmacMeshAttribLayerType::Positions => 3 * 4,
-            XmacMeshAttribLayerType::Normals => 3 * 4,
-            XmacMeshAttribLayerType::Tangents => 4 * 4,
-            XmacMeshAttribLayerType::UvCoords => 2 * 4,
-            XmacMeshAttribLayerType::Colors32 => 4,
-            XmacMeshAttribLayerType::OriginalVertexNumbers => 4,
-            XmacMeshAttribLayerType::Colors128 => 4 * 4,
-            XmacMeshAttribLayerType::BiTangents => 3 * 4,
-            XmacMeshAttribLayerType::ClothData => 4,
-        };
+        let expected_attrib_size = layer_type.get_expected_attrib_size();
         if attrib_size != expected_attrib_size {
             return Err(Error::InvalidStructure(format!("Attribute size mismatch - {layer_type:?} should have {expected_attrib_size}, found {attrib_size}!")));
         }
@@ -264,6 +290,39 @@ impl XmacMeshAttribLayer {
 
         Ok(Self { attribs, unknown1 })
     }
+
+    pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W, big_endian: bool) -> Result<usize> {
+        let type_id = match &self.attribs {
+            XmacMeshAttrib::Positions(_) => XmacMeshAttribLayerType::Positions,
+            XmacMeshAttrib::Normals(_) => XmacMeshAttribLayerType::Normals,
+            XmacMeshAttrib::Tangents(_) => XmacMeshAttribLayerType::Tangents,
+            XmacMeshAttrib::UvCoords(_) => XmacMeshAttribLayerType::UvCoords,
+            XmacMeshAttrib::Colors32(_) => XmacMeshAttribLayerType::Colors32,
+            XmacMeshAttrib::OriginalVertexNumbers(_) => {
+                XmacMeshAttribLayerType::OriginalVertexNumbers
+            }
+            XmacMeshAttrib::Colors128(_) => XmacMeshAttribLayerType::Colors128,
+            XmacMeshAttrib::BiTangents(_) => XmacMeshAttribLayerType::BiTangents,
+            XmacMeshAttrib::ClothData(_) => XmacMeshAttribLayerType::ClothData,
+        };
+        write_u32_endian(dst, type_id.into(), big_endian)?;
+        write_u32_endian(dst, type_id.get_expected_attrib_size(), big_endian)?;
+        write_u32_endian(dst, self.unknown1, big_endian)?;
+        let mut written = 4 + 4 + 4;
+        written += match &self.attribs {
+            XmacMeshAttrib::Tangents(data) | XmacMeshAttrib::Colors128(data) => {
+                XmacMeshAttrib::save_vector4(dst, data, big_endian)?
+            }
+            XmacMeshAttrib::BiTangents(data)
+            | XmacMeshAttrib::Positions(data)
+            | XmacMeshAttrib::Normals(data) => XmacMeshAttrib::save_vector3(dst, data, big_endian)?,
+            XmacMeshAttrib::UvCoords(data) => XmacMeshAttrib::save_vector2(dst, data, big_endian)?,
+            XmacMeshAttrib::Colors32(data)
+            | XmacMeshAttrib::OriginalVertexNumbers(data)
+            | XmacMeshAttrib::ClothData(data) => XmacMeshAttrib::save_u32(dst, data, big_endian)?,
+        };
+        Ok(written)
+    }
 }
 
 impl XmacMeshAttrib {
@@ -279,6 +338,18 @@ impl XmacMeshAttrib {
         }
         Ok(attribs)
     }
+    pub fn save_vector2<W: ArchiveWriteTarget>(
+        dst: &mut W,
+        data: &Vec<Vec2>,
+        big_endian: bool,
+    ) -> Result<usize> {
+        let mut written = 0;
+        for ver in data {
+            ver.save_endian(dst, big_endian)?;
+            written += 2 * 4;
+        }
+        Ok(written)
+    }
     pub fn load_vector3<R: ArchiveReadTarget>(
         src: &mut R,
         big_endian: bool,
@@ -290,6 +361,18 @@ impl XmacMeshAttrib {
             attribs.push(Vec3::load_endian(src, big_endian)?);
         }
         Ok(attribs)
+    }
+    pub fn save_vector3<W: ArchiveWriteTarget>(
+        dst: &mut W,
+        data: &Vec<Vec3>,
+        big_endian: bool,
+    ) -> Result<usize> {
+        let mut written = 0;
+        for ver in data {
+            ver.save_endian(dst, big_endian)?;
+            written += 3 * 4;
+        }
+        Ok(written)
     }
     pub fn load_vector4<R: ArchiveReadTarget>(
         src: &mut R,
@@ -303,6 +386,18 @@ impl XmacMeshAttrib {
         }
         Ok(attribs)
     }
+    pub fn save_vector4<W: ArchiveWriteTarget>(
+        dst: &mut W,
+        data: &Vec<Vec4>,
+        big_endian: bool,
+    ) -> Result<usize> {
+        let mut written = 0;
+        for ver in data {
+            ver.save_endian(dst, big_endian)?;
+            written += 4 * 4;
+        }
+        Ok(written)
+    }
     pub fn load_u32<R: ArchiveReadTarget>(
         src: &mut R,
         big_endian: bool,
@@ -314,6 +409,18 @@ impl XmacMeshAttrib {
             attribs.push(read_u32_endian(src, big_endian)?);
         }
         Ok(attribs)
+    }
+    pub fn save_u32<W: ArchiveWriteTarget>(
+        dst: &mut W,
+        data: &Vec<u32>,
+        big_endian: bool,
+    ) -> Result<usize> {
+        let mut written = 0;
+        for ver in data {
+            write_u32_endian(dst, *ver, big_endian)?;
+            written += 4;
+        }
+        Ok(written)
     }
 }
 
@@ -338,5 +445,37 @@ impl XmacMeshSubmesh {
             vertices_count,
             material_idx,
         })
+    }
+    pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W, big_endian: bool) -> Result<usize> {
+        write_u32_endian(dst, self.indices.len() as u32, big_endian)?;
+        write_u32_endian(dst, self.vertices_count, big_endian)?;
+        write_u32_endian(dst, self.material_idx, big_endian)?;
+        write_u32_endian(dst, self.bones.len() as u32, big_endian)?;
+        let mut written = 4 * 4;
+        for idx in &self.indices {
+            write_u32_endian(dst, *idx, big_endian)?;
+            written += 4;
+        }
+        for bone in &self.bones {
+            write_u32_endian(dst, *bone, big_endian)?;
+            written += 4;
+        }
+        Ok(written)
+    }
+}
+
+impl XmacMeshAttribLayerType {
+    pub fn get_expected_attrib_size(&self) -> u32 {
+        match &self {
+            XmacMeshAttribLayerType::Positions => 3 * 4,
+            XmacMeshAttribLayerType::Normals => 3 * 4,
+            XmacMeshAttribLayerType::Tangents => 4 * 4,
+            XmacMeshAttribLayerType::UvCoords => 2 * 4,
+            XmacMeshAttribLayerType::Colors32 => 4,
+            XmacMeshAttribLayerType::OriginalVertexNumbers => 4,
+            XmacMeshAttribLayerType::Colors128 => 4 * 4,
+            XmacMeshAttribLayerType::BiTangents => 3 * 4,
+            XmacMeshAttribLayerType::ClothData => 4,
+        }
     }
 }

@@ -173,16 +173,21 @@ impl XmacChunk {
     pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W, big_endian: bool) -> Result<()> {
         let mut data = TempWriteTarget::new(dst);
         let meta = match self {
-            XmacChunk::Info(xmac_info) => todo!(),
-            XmacChunk::Nodes(xmac_nodes) => todo!(),
-            XmacChunk::MaterialInfo(xmac_material_info) => todo!(),
-            XmacChunk::StdMaterial(xmac_std_material) => todo!(),
-            XmacChunk::Mesh(xmac_mesh) => todo!(),
+            XmacChunk::Info(xmac_info) => xmac_info.save(&mut data, big_endian)?,
+            XmacChunk::Nodes(xmac_nodes) => xmac_nodes.save(&mut data, big_endian)?,
+            XmacChunk::MaterialInfo(xmac_material_info) => {
+                xmac_material_info.save(&mut data, big_endian)?
+            }
+            XmacChunk::StdMaterial(xmac_std_material) => {
+                xmac_std_material.save(&mut data, big_endian)?
+            }
+            XmacChunk::Mesh(xmac_mesh) => xmac_mesh.save(&mut data, big_endian)?,
             XmacChunk::SkinningInfo(xmac_skinning_info) => todo!(),
             XmacChunk::MorphTargets(xmac_morph_targets) => todo!(),
             XmacChunk::Unknown(xmac_unknown_chunk) => xmac_unknown_chunk.save(&mut data)?,
         };
         let data = data.finish();
+        assert_eq!(data.len(), meta.size as usize);
         meta.save(dst, big_endian)?;
         dst.write_all(&data)?;
         Ok(())

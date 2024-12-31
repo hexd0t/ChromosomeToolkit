@@ -196,8 +196,7 @@ impl ArchiveReadTarget for BufReader<File> {}
 
 fn write_str_to_write<W: Write + ?Sized>(dst: &mut W, content: &str) -> std::io::Result<()> {
     let (str_buf, _, unmappable) = encoding_rs::WINDOWS_1252.encode(content);
-    let len_buf = str_buf.len().to_le_bytes();
-    dst.write_all(&len_buf)?;
+    write_u16(dst, str_buf.len() as u16)?;
     dst.write_all(&str_buf)?;
     if unmappable {
         println!("Warning: String '{content}' contains unmappable characters!");
