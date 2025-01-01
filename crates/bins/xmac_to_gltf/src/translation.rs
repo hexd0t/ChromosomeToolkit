@@ -60,6 +60,12 @@ pub fn xmac_to_gltf(input: &XmacFile, buffer_path: &Path) -> Result<GltfRoot> {
     gltf.extensions_used
         .push("KHR_texture_transform".to_string());
 
+    gltf.asset.generator = Some(format!(
+        "ChromosomeToolkit {}, v{}",
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION")
+    ));
+
     // Buffer for binary data:
     let (buffer, buffer_file) = create_buffer(&mut gltf, buffer_path)?;
 
@@ -135,9 +141,7 @@ fn translate_nodes(input: &XmacFile, outputs: &mut Outputs) -> Result<()> {
             pos *= 0.01; // game is in cm, GLTF usually in m
 
             //for some reason, scale is inverted (maybe only when multiply-order == 1?):
-            scale.x = 1.0 / scale.x;
-            scale.y = 1.0 / scale.y;
-            scale.z = 1.0 / scale.z;
+            scale = scale.recip();
 
             let transform =
                 Mat4::from_rotation_translation(node.rotation, pos) * Mat4::from_scale(scale);

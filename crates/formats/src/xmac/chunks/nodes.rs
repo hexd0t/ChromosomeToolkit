@@ -2,6 +2,7 @@ use std::ops::Index;
 use std::ops::IndexMut;
 
 use bitflags::bitflags;
+use glam::Mat3;
 use serde::{Deserialize, Serialize};
 
 use super::super::read_xmac_str;
@@ -47,6 +48,13 @@ pub struct XmacNode {
     pub oriented_bounding_box: glam::Mat4,
     /// usually 1.0
     pub unknown6: f32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct XmacNodeOBB {
+    center: Vec4,
+    extent: Vec3,
+    transform: Mat3,
 }
 
 fn deserialize_mat4_with_nan<'de, D: serde::Deserializer<'de>>(
@@ -164,8 +172,11 @@ impl XmacNode {
         let mut unknown5 = [0; 3];
         src.read_exact(&mut unknown5)?;
         let oriented_bounding_box = Mat4::load(src)?;
+
         let unknown6 = read_f32_endian(src, big_endian)?;
         let node_name = read_xmac_str(src, big_endian)?;
+        let obb_decomp = oriented_bounding_box.to_scale_rotation_translation();
+        println!("{node_name} {obb_decomp:?}");
         let node = XmacNode {
             name: node_name,
             rotation,
@@ -232,6 +243,24 @@ impl XmacNode {
             oriented_bounding_box: Mat4::IDENTITY,
         }
     }
+
+    /// Splits the OBB Mat4 into it's components
+    /// Note: for Nodes that aren't joints for Meshes, this data is usually garbage
+    /// The data is defined in the Node's local space
+    pub fn get_obb(&self) -> XmacNodeOBB {
+        let center = self.oriented_bounding_box.col(3);
+        let extent = self.oriented_bounding_box.row(3).truncate();
+        let transform = Mat3 {
+            x_axis: self.oriented_bounding_box.x_axis.truncate(),
+            y_axis: self.oriented_bounding_box.y_axis.truncate(),
+            z_axis: self.oriented_bounding_box.z_axis.truncate(),
+        };
+        XmacNodeOBB {
+            center,
+            extent,
+            transform,
+        }
+    }
 }
 
 impl Index<XmacNodeId> for XmacNodes {
@@ -262,5 +291,16 @@ impl<'a> IntoIterator for &'a XmacNodes {
 
     fn into_iter(self) -> Self::IntoIter {
         self.nodes.iter()
+    }
+}
+
+impl XmacNodeOBB {
+    pub fn to_mat4(&self) -> Mat4 {
+        Mat4 {
+            x_axis: self.transform.x_axis.extend(self.extent.x),
+            y_axis: self.transform.y_axis.extend(self.extent.y),
+            z_axis: self.transform.z_axis.extend(self.extent.z),
+            w_axis: self.center,
+        }
     }
 }
