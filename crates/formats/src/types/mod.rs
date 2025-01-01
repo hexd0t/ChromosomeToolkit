@@ -198,6 +198,7 @@ impl EntityDynamicContext {
     }
 }
 
+/// TODO: For some reason, sometimes min and max are flipped (e.g. xmac file props)?!?
 #[derive(Debug, Deserialize, Serialize)]
 pub struct BoundingBox {
     pub max: Vec3,

@@ -43,9 +43,10 @@ pub struct XmacNode {
     pub child_count: u32,
     pub flags: XmacNodeFlags,
     pub unknown5: [u8; 3],
-    pub unknown6: f32,
     #[serde(deserialize_with = "deserialize_mat4_with_nan")]
     pub oriented_bounding_box: glam::Mat4,
+    /// usually 1.0
+    pub unknown6: f32,
 }
 
 fn deserialize_mat4_with_nan<'de, D: serde::Deserializer<'de>>(
@@ -162,8 +163,8 @@ impl XmacNode {
         })?;
         let mut unknown5 = [0; 3];
         src.read_exact(&mut unknown5)?;
-        let unknown6 = read_f32_endian(src, big_endian)?;
         let oriented_bounding_box = Mat4::load(src)?;
+        let unknown6 = read_f32_endian(src, big_endian)?;
         let node_name = read_xmac_str(src, big_endian)?;
         let node = XmacNode {
             name: node_name,
@@ -178,8 +179,8 @@ impl XmacNode {
             child_count,
             flags,
             unknown5,
-            unknown6,
             oriented_bounding_box,
+            unknown6,
         };
         Ok(node)
     }
@@ -202,11 +203,11 @@ impl XmacNode {
         write_u32_endian(dst, self.child_count, big_endian)?;
         write_u8(dst, self.flags.bits())?;
         dst.write_all(&self.unknown5)?;
-        write_f32_endian(dst, self.unknown6, big_endian)?;
-        written += 4 + 4 + 4 + 4 + 1 + 3 + 4;
+        written += 4 + 4 + 4 + 4 + 1 + 3;
 
         self.oriented_bounding_box.save_endian(dst, big_endian)?;
-        written += 4 * 16;
+        write_f32_endian(dst, self.unknown6, big_endian)?;
+        written += 4 * 16 + 4;
         written += write_xmac_str(dst, &self.name, big_endian)?;
         Ok(written)
     }

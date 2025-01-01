@@ -29,7 +29,9 @@ pub struct XmacMesh {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct XmacMeshAttribLayer {
     pub attribs: XmacMeshAttrib,
-    pub unknown1: u32,
+    /// true for positions, normals and tangets, false for origverts and uv
+    pub flag1: bool,
+    pub unknown1: [u8; 3],
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -152,7 +154,10 @@ impl XmacMesh {
         println!("Saving MESH chunk...");
         write_u32_endian(dst, self.node_id.0, big_endian)?;
         write_u32_endian(dst, self.orig_verts_count, big_endian)?;
-        let total_verts = self.get_position_attrib().unwrap().len();
+        let total_verts = self
+            .get_position_attrib()
+            .expect("Mesh needs position attrib")
+            .len();
         write_u32_endian(dst, total_verts as u32, big_endian)?;
         let total_indices: usize = self.submeshes.iter().map(|s| s.indices.len()).sum();
         write_u32_endian(dst, total_indices as u32, big_endian)?;
@@ -253,7 +258,8 @@ impl XmacMeshAttribLayer {
         if attrib_size != expected_attrib_size {
             return Err(Error::InvalidStructure(format!("Attribute size mismatch - {layer_type:?} should have {expected_attrib_size}, found {attrib_size}!")));
         }
-        let unknown1 = read_u32_endian(src, big_endian)?;
+        let flag1 = read_bool(src)?;
+        let unknown1 = [read_u8(src)?, read_u8(src)?, read_u8(src)?];
 
         let attribs = match &layer_type {
             XmacMeshAttribLayerType::Positions => XmacMeshAttrib::Positions(
@@ -289,7 +295,11 @@ impl XmacMeshAttribLayer {
             ),
         };
 
-        Ok(Self { attribs, unknown1 })
+        Ok(Self {
+            attribs,
+            flag1,
+            unknown1,
+        })
     }
 
     pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W, big_endian: bool) -> Result<usize> {
@@ -308,7 +318,8 @@ impl XmacMeshAttribLayer {
         };
         write_u32_endian(dst, type_id.into(), big_endian)?;
         write_u32_endian(dst, type_id.get_expected_attrib_size(), big_endian)?;
-        write_u32_endian(dst, self.unknown1, big_endian)?;
+        write_bool(dst, self.flag1)?;
+        dst.write_all(&self.unknown1)?;
         let mut written = 4 + 4 + 4;
         written += match &self.attribs {
             XmacMeshAttrib::Tangents(data) | XmacMeshAttrib::Colors128(data) => {

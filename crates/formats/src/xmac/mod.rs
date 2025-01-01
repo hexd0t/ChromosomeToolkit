@@ -40,6 +40,7 @@ use crate::{
 #[derive(Debug, Deserialize, Serialize)]
 pub struct XmacFile {
     pub res: ResourceFile,
+    pub multiply_order: bool,
     pub chunks: Vec<chunks::XmacChunk>,
 }
 
@@ -58,6 +59,7 @@ impl XmacFile {
                 class_name: R1_CLASS.to_string(),
                 raw_file_ext: R1_RAW_EXT,
             },
+            multiply_order: false,
             chunks: Vec::new(),
         }
     }
@@ -69,14 +71,18 @@ impl XmacFile {
         assert_eq!(&res.raw_file_ext[0..5], &R1_RAW_EXT[0..5]); //the last 3 bytes sometimes differ
         assert_eq!(&res.class_name, &R1_CLASS);
 
-        let chunks = Self::load_xmac(src)?;
+        let (chunks, multiply_order) = Self::load_xmac(src)?;
 
         let trail = read_u64(src)?;
         if trail != 0 {
             println!("Note: Trail is nonzero");
         }
 
-        Ok(XmacFile { res, chunks })
+        Ok(XmacFile {
+            res,
+            chunks,
+            multiply_order,
+        })
     }
 
     pub fn save<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<()> {
@@ -87,14 +93,22 @@ impl XmacFile {
         self.save_xmac(&mut data)?;
         let data = data.finish();
 
-        self.res.save(dst, data.len())?;
+        // If multiply_order is set, the tail must NOT be part of the data,
+        // else it needs to be counted (but both types have the tail in the file)
+        let data_len = if self.multiply_order {
+            data.len()
+        } else {
+            data.len() + 8
+        };
+
+        self.res.save(dst, data_len)?;
         dst.write_all(&data)?;
         write_u64(dst, 0)?;
 
         Ok(())
     }
 
-    fn load_xmac<R: ArchiveReadTarget>(src: &mut R) -> Result<Vec<chunks::XmacChunk>> {
+    fn load_xmac<R: ArchiveReadTarget>(src: &mut R) -> Result<(Vec<chunks::XmacChunk>, bool)> {
         let data_len = read_u32(src)? as u64;
         let xmac_start = src.stream_position()?;
         let xmac_finish = xmac_start + data_len;
@@ -119,7 +133,7 @@ impl XmacFile {
             chunks.push(new_chunk);
         }
 
-        Ok(chunks)
+        Ok((chunks, multiply_order))
     }
 
     pub fn sanity_check(&self) -> Result<()> {
@@ -151,9 +165,7 @@ impl XmacFile {
             }
         }
         if info_chunks != 1 {
-            return Err(Error::InvalidStructure(format!(
-                "Expected 1 Info chunk, found {info_chunks}"
-            )));
+            println!("Warn: Expected 1 Info chunk, found {info_chunks}");
         }
         if nodes_chunks != 1 {
             return Err(Error::InvalidStructure(format!(
@@ -182,6 +194,11 @@ impl XmacFile {
                 "Expected at most {mesh_chunks} Skin chunks, found {skin_chunks}"
             )));
         }
+        if skin_chunks == 0 {
+            println!(
+                "Warn: Expected at least 1 Skin chunk, found none - the mesh will probably not be rendered!"
+            );
+        }
         if morph_chunks > mesh_chunks {
             return Err(Error::InvalidStructure(format!(
                 "Expected at most {mesh_chunks} Skin chunks, found {morph_chunks}"
@@ -191,7 +208,7 @@ impl XmacFile {
     }
 
     pub fn save_xmac<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<()> {
-        self.sanity_check()?;
+        //self.sanity_check()?;
 
         let mut data = TempWriteTarget::new(dst);
         data.write_all(&XMAC_MAGIC)?;
@@ -201,7 +218,7 @@ impl XmacFile {
         write_u8(&mut data, 0)?;
 
         let big_endian = false; // Big Endian doesn't make sense on x86, but its here if you need it
-        let multiply_order = false; // Don't really know the influence
+        let multiply_order = self.multiply_order; // Don't really know the influence
 
         write_bool(&mut data, big_endian)?;
         write_bool(&mut data, multiply_order)?;
