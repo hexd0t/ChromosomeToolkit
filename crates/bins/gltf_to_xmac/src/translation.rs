@@ -35,7 +35,6 @@ struct TempData {
     /// gltf mesh idx to xmac node idx
     mesh_nodes: HashMap<usize, usize>,
 }
-type TempSkinData = Vec<[(u32, f32); 8]>;
 
 pub fn gltf_to_xmac(
     gltf: gltf::Document,
@@ -125,10 +124,11 @@ fn translate_nodes(gltf: &gltf::Document, tmp: &mut TempData, output: &mut XmacF
         // in the xmac
         if gltf_node.mesh().is_none() && !skeleton_nodes.contains(&gltf_node_idx) {
             println!("Dropping Node {gltf_node_idx} ({name})");
+
             continue;
         }
 
-        let (mut local_scale, rotation, mut local_pos) = match gltf_node.transform() {
+        let (mut local_scale, mut rotation, mut local_pos) = match gltf_node.transform() {
             Transform::Matrix { matrix } => {
                 Mat4::from_cols_array_2d(&matrix).to_scale_rotation_translation()
             }
@@ -142,6 +142,14 @@ fn translate_nodes(gltf: &gltf::Document, tmp: &mut TempData, output: &mut XmacF
                 Vec3::from_array(translation),
             ),
         };
+
+        // R1 canonicalizes by always keeping w component of rotation positive
+        if rotation.w.is_sign_negative() {
+            rotation.x *= -1.0;
+            rotation.y *= -1.0;
+            rotation.z *= -1.0;
+            rotation.w *= -1.0;
+        }
 
         local_scale = local_scale.recip();
         local_pos = local_pos * 100.0; //m to cm
@@ -179,12 +187,14 @@ fn translate_nodes(gltf: &gltf::Document, tmp: &mut TempData, output: &mut XmacF
     Ok(())
 }
 
+type TempSkinData = Vec<[(u32, f32); 8]>;
 #[derive(Default)]
 struct VertexData {
     positions: Vec<Vec3>,
     normals: Vec<Vec3>,
     tangents: Vec<Vec4>,
     uvs: Vec<Vec2>,
+    /// still as gltf joint idx
     joints: Vec<[u32; 4]>,
     weights: Vec<[f32; 4]>,
     joints2: Vec<[u32; 4]>,
@@ -199,6 +209,10 @@ fn translate_meshes(
 ) -> Result<()> {
     for gltf_mesh in gltf.meshes() {
         let gltf_mesh_idx = gltf_mesh.index();
+        let gltf_node = gltf
+            .nodes()
+            .find(|n| n.mesh().is_some_and(|m| m.index() == gltf_mesh_idx))
+            .unwrap();
         let mesh_node_idx = *tmp.mesh_nodes.get(&gltf_mesh_idx).unwrap();
         let mesh_node = &output.get_nodes_chunk().unwrap().nodes[mesh_node_idx];
 
@@ -231,7 +245,7 @@ fn translate_meshes(
                 .or_insert(0);
             if *previous_verts == 0 {
                 // These vertices have not yet been read
-                read_prim_vertex_data(&prim, &read, &mut vertices, tmp)?;
+                read_prim_vertex_data(&gltf_node, &prim, &read, &mut vertices, tmp)?;
             } else if prev_used_buffer != Some(prim_pos_buffer.index()) {
                 return Err(ConvError::NotImplemented(format!(
                     "Vertex Buffer reuses must be consecutive"
@@ -265,21 +279,32 @@ fn translate_meshes(
                     *previous_verts
                 )));
             }
-            *previous_verts += prim_vertices;
 
             filter_weightless_joints(&mut vertices, prim_start_vertex);
 
-            let bones: HashSet<_> = vertices
-                .joints
+            let joints1 = indices
                 .iter()
-                .chain(vertices.joints2.iter())
-                .flat_map(|j| *j)
+                .flat_map(|i| vertices.joints[(*i + *previous_verts) as usize].iter());
+            let joints2 = indices.iter().flat_map(|i| {
+                vertices
+                    .joints2
+                    .get((*i + *previous_verts) as usize)
+                    .unwrap_or(&[u32::MAX; 4])
+                    .iter()
+            });
+            let mut bones: Vec<_> = joints1
+                .chain(joints2)
+                .copied()
                 .filter(|j| *j < u32::MAX)
                 .collect();
+            bones.sort();
+            bones.dedup();
+
+            *previous_verts += prim_vertices;
 
             let submesh = XmacMeshSubmesh {
                 indices,
-                bones: Vec::from_iter(bones.into_iter()),
+                bones,
                 vertices_count: prim_vertices,
                 material_idx: prim
                     .material()
@@ -337,9 +362,7 @@ fn translate_skinning(
         .nodes()
         .find(|n| n.mesh().is_some_and(|m| m.index() == gltf_mesh_idx))
         .unwrap();
-    let gltf_skin = gltf_node
-        .skin()
-        .expect("Found skinning weights, but no Skin");
+
     let mut table_entries = Vec::new();
     let mut influences = Vec::new();
     let mut local_bones = HashSet::new();
@@ -351,12 +374,10 @@ fn translate_skinning(
             if bone_idx == u32::MAX {
                 continue;
             }
-            let bone = gltf_skin.joints().skip(bone_idx as usize).next().unwrap();
-            let bone_node_idx = *tmp.node_mapping.get(&bone.index()).unwrap();
-            local_bones.insert(bone_node_idx);
+            local_bones.insert(bone_idx);
             influences.push(SkinInfluence {
                 weight,
-                node_idx: bone_node_idx as u16,
+                node_idx: bone_idx as u16,
                 unknown: 0,
             });
             num_elements += 1;
@@ -379,7 +400,7 @@ fn translate_skinning(
 }
 
 fn filter_weightless_joints(vertices: &mut VertexData, prim_start_vertex: usize) {
-    // set joint to u32::MAX (invalid) if weight ~= 0
+    // set joint to u16::MAX (invalid) if weight ~= 0
     for (joint, weight) in vertices
         .joints
         .iter_mut()
@@ -474,35 +495,39 @@ fn mesh_vertices_to_attrib_layers(
 }
 
 fn read_prim_vertex_data<'a, 's, T: Clone + Fn(gltf::Buffer<'a>) -> Option<&'s [u8]>>(
+    gltf_node: &gltf::Node,
     prim: &Primitive,
     read: &gltf::mesh::Reader<'a, 's, T>,
     vertices: &mut VertexData,
     tmp: &mut TempData,
 ) -> Result<()> {
+    let gltf_skin = gltf_node.skin();
+
+    let joint_idx_to_new_bone_id = |joint: u16| -> u32 {
+        tmp.node_mapping
+            .get(
+                &gltf_skin
+                    .as_ref()
+                    .expect("Found skinning weights, but no Skin")
+                    .joints()
+                    .skip(joint as usize)
+                    .next()
+                    .unwrap()
+                    .index(),
+            )
+            .copied()
+            .map(|v| v as u32)
+            .unwrap_or(u32::MAX)
+    };
     let translate_bone_ids = |gltf_id: [u16; 4]| {
         [
-            tmp.node_mapping
-                .get(&(gltf_id[0] as usize))
-                .copied()
-                .map(|v| v as u32)
-                .unwrap_or(u32::MAX),
-            tmp.node_mapping
-                .get(&(gltf_id[1] as usize))
-                .copied()
-                .map(|v| v as u32)
-                .unwrap_or(u32::MAX),
-            tmp.node_mapping
-                .get(&(gltf_id[2] as usize))
-                .copied()
-                .map(|v| v as u32)
-                .unwrap_or(u32::MAX),
-            tmp.node_mapping
-                .get(&(gltf_id[3] as usize))
-                .copied()
-                .map(|v| v as u32)
-                .unwrap_or(u32::MAX),
+            joint_idx_to_new_bone_id(gltf_id[0]),
+            joint_idx_to_new_bone_id(gltf_id[1]),
+            joint_idx_to_new_bone_id(gltf_id[2]),
+            joint_idx_to_new_bone_id(gltf_id[3]),
         ]
     };
+
     for (attr_type, _) in prim.attributes() {
         match attr_type {
             gltf::Semantic::Positions => vertices.positions.extend(

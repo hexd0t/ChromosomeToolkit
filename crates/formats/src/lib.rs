@@ -7,6 +7,7 @@ pub mod lrent;
 pub mod resourcefile;
 pub mod tple;
 pub mod types;
+pub mod ximg;
 pub mod xmac;
 pub mod xsnd;
 

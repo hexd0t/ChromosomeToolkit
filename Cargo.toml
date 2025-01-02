@@ -6,7 +6,9 @@ members = [
     "crates/bins/json_to_lrent",
     "crates/bins/tple_to_json",
     "crates/bins/json_to_tple",
-    "crates/bins/xmac_to_gltf", "crates/bins/gltf_to_xmac",
+    "crates/bins/xmac_to_gltf",
+    "crates/bins/gltf_to_xmac",
+    "crates/bins/ximg_to_png",
 ]
 resolver = "2"
 
@@ -18,6 +20,7 @@ gltf = { version = "1.4", features = [
     "KHR_texture_transform",
     "extras",
 ] }
+image_dds = "0.6"
 
 [profile.release]
 strip = true

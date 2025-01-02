@@ -1,8 +1,9 @@
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    fs::File,
-    io::{BufWriter, Seek, Write},
-    path::Path,
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    ffi::OsString,
+    fs::{DirEntry, File},
+    io::{BufReader, BufWriter, Seek, Write},
+    path::{Path, PathBuf},
 };
 
 use super::{ConvError, Result};
@@ -10,6 +11,7 @@ use formats::{
     binimport::BinImport,
     helpers::{write_f32, write_u16, write_u32},
     types::{Mat4, Vec2, Vec3, Vec4},
+    ximg::XimgFile,
     xmac::{
         chunks::{
             material::{XmacLayerBlendMode, XmacMaterialLayerType, XmacStandardMaterialLayer},
@@ -55,7 +57,11 @@ struct Outputs<'a> {
     mesh_extras: Vec<MeshExtras>,
 }
 
-pub fn xmac_to_gltf(input: &XmacFile, buffer_path: &Path) -> Result<GltfRoot> {
+pub fn xmac_to_gltf(
+    input: &XmacFile,
+    buffer_path: &Path,
+    include_textures: bool,
+) -> Result<GltfRoot> {
     let mut gltf = GltfRoot::default();
 
     gltf.extensions_used.push("KHR_materials_ior".to_string());
@@ -82,8 +88,14 @@ pub fn xmac_to_gltf(input: &XmacFile, buffer_path: &Path) -> Result<GltfRoot> {
         mesh_extras,
     };
 
+    let texture_dir = if include_textures {
+        Some(buffer_path.parent().unwrap())
+    } else {
+        None
+    };
+
     translate_nodes(input, &mut outputs)?;
-    translate_materials(input, &mut outputs)?;
+    translate_materials(input, texture_dir, &mut outputs)?;
     translate_meshes(input, &mut outputs)?;
     translate_skinning(input, &mut outputs)?;
     translate_morphs(input, &mut outputs)?;
@@ -540,9 +552,11 @@ fn calculate_inv_binds(
     let mut inverse_binds = vec![Mat4::IDENTITY; joints.len()];
     for (joint_idx, joint_node_idx) in joints.iter().enumerate() {
         let joint_node = &gltf.nodes[joint_node_idx.value()];
-        inverse_binds[joint_idx] = Mat4::from_cols_array(joint_node.matrix.as_ref().unwrap())
-            .inverse()
-            * inverse_binds[joint_idx];
+        let joint_transform = joint_node
+            .matrix
+            .map(|m| Mat4::from_cols_array(&m))
+            .unwrap_or_default();
+        inverse_binds[joint_idx] = joint_transform.inverse() * inverse_binds[joint_idx];
         for child_joint in joint_node
             .children
             .iter()
@@ -798,7 +812,11 @@ fn write_skin_buffer(
     ))
 }
 
-fn translate_materials(input: &XmacFile, outputs: &mut Outputs) -> Result<()> {
+fn translate_materials(
+    input: &XmacFile,
+    texture_dir: Option<&Path>,
+    outputs: &mut Outputs,
+) -> Result<()> {
     for material in input.get_material_chunks() {
         let diffuse_layer = material.get_layer_by_type(XmacMaterialLayerType::Diffuse);
         let specular_layer = material.get_layer_by_type(XmacMaterialLayerType::Bump);
@@ -808,6 +826,7 @@ fn translate_materials(input: &XmacFile, outputs: &mut Outputs) -> Result<()> {
             let tex = xmac_mat_layer_to_texture(
                 format!("{}_diffuse", material.name),
                 diffuse_layer,
+                texture_dir,
                 outputs.gltf,
             );
             Some(GltfTexInfo {
@@ -826,6 +845,7 @@ fn translate_materials(input: &XmacFile, outputs: &mut Outputs) -> Result<()> {
             let tex = xmac_mat_layer_to_texture(
                 format!("{}_specular", material.name),
                 specular_layer,
+                texture_dir,
                 outputs.gltf,
             );
             let texture_transform = xmac_mat_layer_to_transform(specular_layer);
@@ -859,6 +879,7 @@ fn translate_materials(input: &XmacFile, outputs: &mut Outputs) -> Result<()> {
                 index: xmac_mat_layer_to_texture(
                     format!("{}_normal", material.name),
                     bump_layer,
+                    texture_dir,
                     outputs.gltf,
                 ),
                 scale: bump_layer.u_tiling,
@@ -910,6 +931,7 @@ fn translate_materials(input: &XmacFile, outputs: &mut Outputs) -> Result<()> {
 fn xmac_mat_layer_to_texture(
     name: String,
     layer: &XmacStandardMaterialLayer,
+    texture_dir: Option<&Path>,
     gltf: &mut GltfRoot,
 ) -> GltfIndex<Texture> {
     let image = Image {
@@ -928,8 +950,83 @@ fn xmac_mat_layer_to_texture(
         extensions: None,
         extras: None,
     };
-    // ToDo: actually export material texture to png there
+
+    if let Some(texture_dir) = texture_dir {
+        convert_texture(&layer.texture, texture_dir).unwrap();
+    }
+
     gltf.push(tex)
+}
+
+fn convert_texture(texture_name: &str, texture_dir: &Path) -> Result<()> {
+    let needle_name = OsString::from(format!("{texture_name}._ximg"));
+    let images_name = OsString::from("images");
+    let find_xmac = |de: std::io::Result<DirEntry>| -> Option<PathBuf> {
+        if let Ok(de) = de {
+            if &de.file_name() == &needle_name {
+                return Some(de.path());
+            }
+        }
+        None
+    };
+    let find_images = |de: std::io::Result<DirEntry>| -> Option<PathBuf> {
+        if let Ok(de) = de {
+            if &de.file_name() == &images_name {
+                return Some(de.path());
+            }
+        }
+        None
+    };
+
+    // first, check output dir:
+    let mut source_path = None;
+    if let Some(path) = texture_dir.read_dir().unwrap().find_map(find_xmac) {
+        source_path = Some(path);
+    } else {
+        //else, look for images folder in ancestry:
+        'outer: for ancestor in texture_dir.ancestors() {
+            let mut search_dirs: VecDeque<_> = ancestor
+                .read_dir()
+                .unwrap()
+                .find_map(find_images)
+                .into_iter()
+                .collect();
+            while let Some(search_dir) = search_dirs.pop_front() {
+                if let Some(path) = search_dir.read_dir().unwrap().find_map(find_xmac) {
+                    source_path = Some(path);
+                    break 'outer;
+                }
+                for child in search_dir.read_dir().unwrap() {
+                    let child = child.unwrap();
+                    if child.metadata().unwrap().is_dir() {
+                        search_dirs.push_back(child.path());
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(source_path) = source_path {
+        let mut source_file = BufReader::new(File::open(source_path)?);
+        let texture = XimgFile::load(&mut source_file).unwrap();
+        drop(source_file);
+
+        let image = image_dds::image_from_dds(&texture.dds, 0).unwrap();
+        // TODO: Write specular maps to alpha channel (gltf spec)
+        image
+            .save_with_format(
+                texture_dir.join(format!("{texture_name}.png")),
+                image_dds::image::ImageFormat::Png,
+            )
+            .unwrap();
+        println!("Converted Texture {texture_name}");
+    } else {
+        println!(
+            "Warn: no texture for {texture_name}._ximg found - did you unpack the images.pak?"
+        );
+    }
+
+    Ok(())
 }
 
 fn xmac_mat_layer_to_transform(layer: &XmacStandardMaterialLayer) -> Option<GltfTexTransform> {

@@ -103,7 +103,7 @@ impl Property {
             "gEDirection"
             | "bENoiseTurbulence"
             | "eCImageFilterRTBase_eCGfxShared_eEColorFormat"
-            | "eCImageResource2_eCGfxShared_eEColorFormat"
+            | "eCGfxShared::eEColorFormat"
             | "eEAnchorMode"
             | "eEAudioChannelFallOff"
             | "eEAudioChannelGroup"
@@ -111,8 +111,8 @@ impl Property {
             | "eEAudioEmitterShape"
             | "eEBillboardTargetMode"
             | "eEBoolOverwrite"
-            | "eCGuiRadioButton2_eECheckState"
-            | "eCGuiCheckBox2_eECheckState"
+            | "eCGuiRadioButton2::eECheckState"
+            | "eCGuiCheckBox2::eECheckState"
             | "eECollisionGroup"
             | "eECollisionShapeType"
             | "eEColorSrcCombinerType"
@@ -154,7 +154,7 @@ impl Property {
             | "eEShadowMaskIndex"
             | "eEShapeAABBAdapt"
             | "eEShapeGroup"
-            | "eCMaterialResource2_eEShapeMaterial"
+            | "eCMaterialResource2::eEShapeMaterial"
             | "eEShapeMaterial"
             | "eESplitImageStyle"
             | "eEStaticIlluminated"
@@ -441,7 +441,7 @@ impl Property {
             "eCImageFilterRTBase_eCGfxShared_eEColorFormat" => PropEnum::ImageFilterRTColorFormat(
                 enums::ImageFilterRTColorFormat::try_from(discriminant)?,
             ),
-            "eCImageResource2_eCGfxShared_eEColorFormat" => PropEnum::ImageResource2ColorFormat(
+            "eCGfxShared::eEColorFormat" => PropEnum::ImageResource2ColorFormat(
                 enums::ImageResource2ColorFormat::try_from(discriminant)?,
             ),
             "eEAnchorMode" => PropEnum::AnchorMode(enums::AnchorMode::try_from(discriminant)?),
@@ -463,10 +463,10 @@ impl Property {
             "eEBoolOverwrite" => {
                 PropEnum::BoolOverwrite(enums::BoolOverwrite::try_from(discriminant)?)
             }
-            "eCGuiRadioButton2_eECheckState" => {
+            "eCGuiRadioButton2::eECheckState" => {
                 PropEnum::RadioCheckState(enums::RadioCheckState::try_from(discriminant)?)
             }
-            "eCGuiCheckBox2_eECheckState" => {
+            "eCGuiCheckBox2::eECheckState" => {
                 PropEnum::CheckBoxCheckState(enums::CheckBoxCheckState::try_from(discriminant)?)
             }
             "eECollisionGroup" => {
@@ -546,7 +546,7 @@ impl Property {
                 PropEnum::PropertySetType(enums::PropertySetType::try_from(discriminant)?)
             }
             "eEReflectType" => PropEnum::ReflectType(enums::ReflectType::try_from(discriminant)?),
-            "eERigidbody_Flag" => {
+            "eERigidbody::Flag" => {
                 PropEnum::RigidbodyFlag(enums::RigidbodyFlag::try_from(discriminant)?)
             }
             "eERotationFrom" => {
@@ -574,7 +574,7 @@ impl Property {
                 PropEnum::ShapeAABBAdapt(enums::ShapeAABBAdapt::try_from(discriminant)?)
             }
             "eEShapeGroup" => PropEnum::ShapeGroup(enums::ShapeGroup::try_from(discriminant)?),
-            "eCMaterialResource2_eEShapeMaterial" => {
+            "eCMaterialResource2::eEShapeMaterial" => {
                 PropEnum::ShapeMaterial(enums::ShapeMaterial::try_from(discriminant)?)
             }
             "eEShapeMaterial" => {
@@ -640,7 +640,7 @@ impl Property {
             "gEAmountType" => PropEnum::AmountType(enums::AmountType::try_from(discriminant)?),
             "gEAnchorType" => PropEnum::AnchorType(enums::AnchorType::try_from(discriminant)?),
             "gEAniState" => PropEnum::AniState(enums::AniState::try_from(discriminant)?),
-            "gCCombatMoveStumble_gEAniState" => PropEnum::CombatMoveStumbleAniState(
+            "gCCombatMoveStumble::gEAniState" => PropEnum::CombatMoveStumbleAniState(
                 enums::CombatMoveStumbleAniState::try_from(discriminant)?,
             ),
             "gEArenaStatus" => PropEnum::ArenaStatus(enums::ArenaStatus::try_from(discriminant)?),
@@ -649,10 +649,10 @@ impl Property {
             "gEBraveryOverride" => {
                 PropEnum::BraveryOverride(enums::BraveryOverride::try_from(discriminant)?)
             }
-            "gCCombatMoveMelee_gECombatAction" => {
+            "gCCombatMoveMelee::gECombatAction" => {
                 PropEnum::MeleeCombatAction(enums::MeleeCombatAction::try_from(discriminant)?)
             }
-            "gCCombatMoveScriptState_gECombatAction" => {
+            "gCCombatMoveScriptState::gECombatAction" => {
                 PropEnum::MoveCombatAction(enums::MoveCombatAction::try_from(discriminant)?)
             }
             "gECombatAttackStumble" => {
@@ -668,10 +668,10 @@ impl Property {
                 PropEnum::CombatHitDirection(enums::CombatHitDirection::try_from(discriminant)?)
             }
             "gECombatMode" => PropEnum::CombatMode(enums::CombatMode::try_from(discriminant)?),
-            "gCCombatMoveMelee_gECombatMove" => {
+            "gCCombatMoveMelee::gECombatMove" => {
                 PropEnum::MeleeCombatMove(enums::MeleeCombatMove::try_from(discriminant)?)
             }
-            "gCCombatMoveMelee2_gECombatMove" => {
+            "gCCombatMoveMelee2::gECombatMove" => {
                 PropEnum::Melee2CombatMove(enums::Melee2CombatMove::try_from(discriminant)?)
             }
             "gECombatMoveSide" => {
@@ -717,7 +717,7 @@ impl Property {
                 PropEnum::EffectTargetMode(enums::EffectTargetMode::try_from(discriminant)?)
             }
             "gEEntityType" => PropEnum::EntityType(enums::EntityType::try_from(discriminant)?),
-            "gCEquipPicbox2_gEEquipSlot" => {
+            "gCEquipPicbox2::gEEquipSlot" => {
                 PropEnum::Picbox2EquipSlot(enums::Picbox2EquipSlot::try_from(discriminant)?)
             }
             "gEEquipSlot" => PropEnum::EquipSlot(enums::EquipSlot::try_from(discriminant)?),
@@ -754,7 +754,7 @@ impl Property {
             "gEInfoCondType" => {
                 PropEnum::InfoCondType(enums::InfoCondType::try_from(discriminant)?)
             }
-            "gCInfoConditionQuestStatus_gEInfoCondType" => {
+            "gCInfoConditionQuestStatus::gEInfoCondType" => {
                 PropEnum::QuestInfoCondType(enums::QuestInfoCondType::try_from(discriminant)?)
             }
             "gEInfoGesture" => PropEnum::InfoGesture(enums::InfoGesture::try_from(discriminant)?),
@@ -887,9 +887,7 @@ impl Property {
             PropEnum::ImageFilterRTColorFormat(e) => {
                 ("eCImageFilterRTBase_eCGfxShared_eEColorFormat", (*e).into())
             }
-            PropEnum::ImageResource2ColorFormat(e) => {
-                ("eCImageResource2_eCGfxShared_eEColorFormat", (*e).into())
-            }
+            PropEnum::ImageResource2ColorFormat(e) => ("eCGfxShared::eEColorFormat", (*e).into()),
             PropEnum::AnchorMode(e) => ("eEAnchorMode", (*e).into()),
             PropEnum::AudioChannelFallOff(e) => ("eEAudioChannelFallOff", (*e).into()),
             PropEnum::AudioChannelGroup(e) => ("eEAudioChannelGroup", (*e).into()),
@@ -897,8 +895,8 @@ impl Property {
             PropEnum::AudioEmitterShape(e) => ("eEAudioEmitterShape", (*e).into()),
             PropEnum::BillboardTargetMode(e) => ("eEBillboardTargetMode", (*e).into()),
             PropEnum::BoolOverwrite(e) => ("eEBoolOverwrite", (*e).into()),
-            PropEnum::RadioCheckState(e) => ("eCGuiRadioButton2_eECheckState", (*e).into()),
-            PropEnum::CheckBoxCheckState(e) => ("eCGuiCheckBox2_eECheckState", (*e).into()),
+            PropEnum::RadioCheckState(e) => ("eCGuiRadioButton2::eECheckState", (*e).into()),
+            PropEnum::CheckBoxCheckState(e) => ("eCGuiCheckBox2::eECheckState", (*e).into()),
             PropEnum::CollisionGroup(e) => ("eECollisionGroup", (*e).into()),
             PropEnum::CollisionShapeType(e) => ("eECollisionShapeType", (*e).into()),
             PropEnum::ColorSrcCombinerType(e) => ("eEColorSrcCombinerType", (*e).into()),
@@ -981,7 +979,7 @@ impl Property {
             PropEnum::Attitude(e) => ("gEAttitude", (*e).into()),
             PropEnum::BoostTarget(e) => ("gEBoostTarget", (*e).into()),
             PropEnum::BraveryOverride(e) => ("gEBraveryOverride", (*e).into()),
-            PropEnum::MeleeCombatAction(e) => ("gCCombatMoveMelee_gECombatAction", (*e).into()),
+            PropEnum::MeleeCombatAction(e) => ("gCCombatMoveMelee::gECombatAction", (*e).into()),
             PropEnum::MoveCombatAction(e) => {
                 ("gCCombatMoveScriptState_gECombatAction", (*e).into())
             }
@@ -991,7 +989,7 @@ impl Property {
             PropEnum::CombatHitDirection(e) => ("gECombatHitDirection", (*e).into()),
             PropEnum::CombatMode(e) => ("gECombatMode", (*e).into()),
             PropEnum::MeleeCombatMove(e) => ("gCCombatMoveMelee_gECombatMove", (*e).into()),
-            PropEnum::Melee2CombatMove(e) => ("gCCombatMoveMelee2_gECombatMove", (*e).into()),
+            PropEnum::Melee2CombatMove(e) => ("gCCombatMoveMelee2::gECombatMove", (*e).into()),
             PropEnum::CombatMoveSide(e) => ("gECombatMoveSide", (*e).into()),
             PropEnum::CombatParadeType(e) => ("gECombatParadeType", (*e).into()),
             PropEnum::CombatPhaseType(e) => ("gECombatPhaseType", (*e).into()),
@@ -1027,7 +1025,7 @@ impl Property {
             PropEnum::NpcGuild(e) => ("gCNPC_PS_gEGuild", (*e).into()),
             PropEnum::HitDirection(e) => ("gEHitDirection", (*e).into()),
             PropEnum::HudPage(e) => ("gEHudPage", (*e).into()),
-            PropEnum::HudPageProgessBar(e) => ("gCPageTimerProgressBar_gEHudPage", (*e).into()),
+            PropEnum::HudPageProgessBar(e) => ("gCPageTimerProgressBar::gEHudPage", (*e).into()),
             PropEnum::Icon(e) => ("gEIcon", (*e).into()),
             PropEnum::InfoCondType(e) => ("gEInfoCondType", (*e).into()),
             PropEnum::QuestInfoCondType(e) => {

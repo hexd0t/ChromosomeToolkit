@@ -7,24 +7,13 @@ use std::{
     path::Path,
 };
 
-use formats::xmac::XmacFile;
+use formats::ximg::XimgFile;
 use serde::Serialize;
-mod translation;
 
 fn main() {
-    println!("Chromosome Toolkit - R1 - XMAC to GLTF");
+    println!("Chromosome Toolkit - R1 - XIMG to PNG");
     let mut queue = env::args().skip(1).collect::<VecDeque<_>>();
-    let mut dump_intermediate = false;
-    let mut include_textures = false;
     while let Some(arg) = queue.pop_front() {
-        if &arg == "/dumpintermediate" {
-            dump_intermediate = true;
-            continue;
-        }
-        if &arg == "/includetextures" {
-            include_textures = true;
-            continue;
-        }
         println!("{}", arg);
         let os_arg = OsString::from(&arg);
         let path = Path::new(&os_arg);
@@ -38,7 +27,7 @@ fn main() {
                 for file in dir.flatten() {
                     let meta = file.metadata().unwrap();
                     let path = file.path().to_string_lossy().to_string();
-                    if meta.is_dir() || path.ends_with("._xmac") {
+                    if meta.is_dir() || path.ends_with("._ximg") {
                         queue.push_back(path);
                     }
                 }
@@ -49,7 +38,7 @@ fn main() {
         }
         let in_data = std::fs::File::open(path).unwrap();
         let mut in_data = std::io::BufReader::new(in_data);
-        let xmac = XmacFile::load(&mut in_data).unwrap();
+        let ximg = XimgFile::load(&mut in_data).unwrap();
         println!(
             "Read: {:x}/{:x}",
             in_data.stream_position().unwrap(),
@@ -57,34 +46,16 @@ fn main() {
         );
         drop(in_data);
 
-        let out_arg = arg.replace("._xmac", ".gltf");
+        let out_arg = arg.replace("._ximg", ".png");
         if out_arg == arg {
             panic!("In == out path");
         }
-        if dump_intermediate {
-            println!("Dumping intermediate format");
-            let int_arg = arg.replace("._xmac", "._xmac.json");
-            let formatter = serde_json::ser::PrettyFormatter::with_indent(b"  ");
-            let int_os = OsString::from(&int_arg);
-            let int_file = File::create(Path::new(&int_os)).expect("Unable to open output file");
-            let mut int_file = BufWriter::new(int_file);
-            let mut ser = serde_json::Serializer::with_formatter(&mut int_file, formatter);
-            xmac.serialize(&mut ser).unwrap();
-            int_file.flush().unwrap();
-        }
-        let out_bin = OsString::from(arg.replace("._xmac", ".bin"));
 
-        let gltf = translation::xmac_to_gltf(&xmac, Path::new(&out_bin), include_textures).unwrap();
-        println!("Translation done");
-
-        let out_os = OsString::from(&out_arg);
-        let out_path = Path::new(&out_os);
-
-        let out_file = File::create(out_path).expect("Unable to open output file");
-        let mut out_file = BufWriter::new(out_file);
-
-        gltf.to_writer_pretty(&mut out_file).unwrap();
-        out_file.flush().unwrap();
+        let image = image_dds::image_from_dds(&ximg.dds, 0).unwrap();
+        println!("Conversion finished");
+        image
+            .save_with_format(out_arg, image_dds::image::ImageFormat::Png)
+            .unwrap();
 
         println!("done");
     }
