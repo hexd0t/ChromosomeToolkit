@@ -1,15 +1,6 @@
-use std::{
-    collections::VecDeque,
-    env,
-    ffi::OsString,
-    fs::File,
-    io::{BufWriter, Seek, Write},
-    path::Path,
-};
+use std::{collections::VecDeque, env, ffi::OsString, io::Seek, path::Path};
 
 use formats::ximg::XimgFile;
-use serde::Serialize;
-
 fn main() {
     println!("Chromosome Toolkit - R1 - XIMG to PNG");
     let mut queue = env::args().skip(1).collect::<VecDeque<_>>();
@@ -58,28 +49,5 @@ fn main() {
             .unwrap();
 
         println!("done");
-    }
-}
-
-#[derive(Debug)]
-pub enum ConvError {
-    NotImplemented(String),
-    MandatoryDataMissing(String),
-    InvalidData(String),
-    IoError(std::io::Error),
-}
-
-type Result<T> = std::result::Result<T, ConvError>;
-
-impl std::error::Error for ConvError {}
-impl std::fmt::Display for ConvError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
-    }
-}
-
-impl From<std::io::Error> for ConvError {
-    fn from(value: std::io::Error) -> Self {
-        Self::IoError(value)
     }
 }

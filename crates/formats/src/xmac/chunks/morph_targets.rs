@@ -272,14 +272,14 @@ impl MeshDeformDeltas {
             write_u8(dst, comp.x as u8)?;
             write_u8(dst, comp.y as u8)?;
             write_u8(dst, comp.z as u8)?;
-            written += 3 * 1;
+            written += 3;
         }
         for delta in &self.deltas {
             let comp = ((delta.tangent_delta - min_val) * max_u8 / val_span).round();
             write_u8(dst, comp.x as u8)?;
             write_u8(dst, comp.y as u8)?;
             write_u8(dst, comp.z as u8)?;
-            written += 3 * 1;
+            written += 3;
         }
 
         for delta in &self.deltas {

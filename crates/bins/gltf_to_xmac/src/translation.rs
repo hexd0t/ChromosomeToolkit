@@ -58,8 +58,7 @@ pub fn gltf_to_xmac(
             .as_json()
             .asset
             .generator
-            .as_ref()
-            .map(String::as_str)
+            .as_deref()
             .unwrap_or_default()
             .to_string(),
         orig_filename: file_name,
@@ -152,7 +151,7 @@ fn translate_nodes(gltf: &gltf::Document, tmp: &mut TempData, output: &mut XmacF
         }
 
         local_scale = local_scale.recip();
-        local_pos = local_pos * 100.0; //m to cm
+        local_pos *= 100.0; //m to cm
         let parent_idx = parents.get(&gltf_node_idx).copied();
 
         let node = XmacNode {
@@ -203,7 +202,7 @@ struct VertexData {
 
 fn translate_meshes(
     gltf: &gltf::Document,
-    buffer: &Vec<gltf::buffer::Data>,
+    buffer: &[gltf::buffer::Data],
     tmp: &mut TempData,
     output: &mut XmacFile,
 ) -> Result<()> {
@@ -247,9 +246,9 @@ fn translate_meshes(
                 // These vertices have not yet been read
                 read_prim_vertex_data(&gltf_node, &prim, &read, &mut vertices, tmp)?;
             } else if prev_used_buffer != Some(prim_pos_buffer.index()) {
-                return Err(ConvError::NotImplemented(format!(
-                    "Vertex Buffer reuses must be consecutive"
-                )));
+                return Err(ConvError::NotImplemented(
+                    "Vertex Buffer reuses must be consecutive".to_string(),
+                ));
             }
             prev_used_buffer = Some(prim_pos_buffer.index());
 
@@ -334,15 +333,7 @@ fn translate_meshes(
         output.chunks.push(XmacChunk::Mesh(mesh));
 
         if let Some(skin) = weight_data {
-            translate_skinning(
-                gltf,
-                tmp,
-                output,
-                gltf_mesh_idx,
-                mesh_node_idx,
-                is_collision_mesh,
-                skin,
-            );
+            translate_skinning(output, mesh_node_idx, is_collision_mesh, skin);
         }
     }
 
@@ -350,19 +341,11 @@ fn translate_meshes(
 }
 
 fn translate_skinning(
-    gltf: &gltf::Document,
-    tmp: &mut TempData,
     output: &mut XmacFile,
-    gltf_mesh_idx: usize,
     mesh_node_idx: usize,
     is_collision_mesh: bool,
     skin: TempSkinData,
 ) {
-    let gltf_node = gltf
-        .nodes()
-        .find(|n| n.mesh().is_some_and(|m| m.index() == gltf_mesh_idx))
-        .unwrap();
-
     let mut table_entries = Vec::new();
     let mut influences = Vec::new();
     let mut local_bones = HashSet::new();
@@ -510,8 +493,7 @@ fn read_prim_vertex_data<'a, 's, T: Clone + Fn(gltf::Buffer<'a>) -> Option<&'s [
                     .as_ref()
                     .expect("Found skinning weights, but no Skin")
                     .joints()
-                    .skip(joint as usize)
-                    .next()
+                    .nth(joint as usize)
                     .unwrap()
                     .index(),
             )
@@ -698,10 +680,10 @@ fn translate_materials(gltf: &gltf::Document, output: &mut XmacFile) -> Result<(
         let mat = XmacStdMaterial {
             name,
             layers,
-            ambient_color: unused_color.clone(),
-            diffuse_color: unused_color.clone(),
-            specular_color: unused_color.clone(),
-            emissive_color: unused_color.clone(),
+            ambient_color: unused_color,
+            diffuse_color: unused_color,
+            specular_color: unused_color,
+            emissive_color: unused_color,
             shine: 25.0,
             shine_strength,
             opacity,

@@ -620,6 +620,7 @@ fn calculate_relevant_joint_ids(
     (node_to_joint_idx, joints)
 }
 
+#[allow(clippy::type_complexity)]
 fn write_skin_buffer(
     skin: &XmacSkinningInfo,
     skin_mesh: &XmacMesh,
@@ -963,7 +964,7 @@ fn convert_texture(texture_name: &str, texture_dir: &Path) -> Result<()> {
     let images_name = OsString::from("images");
     let find_xmac = |de: std::io::Result<DirEntry>| -> Option<PathBuf> {
         if let Ok(de) = de {
-            if &de.file_name() == &needle_name {
+            if de.file_name() == needle_name {
                 return Some(de.path());
             }
         }
@@ -971,7 +972,7 @@ fn convert_texture(texture_name: &str, texture_dir: &Path) -> Result<()> {
     };
     let find_images = |de: std::io::Result<DirEntry>| -> Option<PathBuf> {
         if let Ok(de) = de {
-            if &de.file_name() == &images_name {
+            if de.file_name() == images_name {
                 return Some(de.path());
             }
         }
