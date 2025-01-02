@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     fs::File,
     io::{BufWriter, Seek, Write},
     path::Path,
@@ -25,14 +25,18 @@ use gltf::json::{
         sparse::{Indices as GltfSparseIndices, Sparse as GltfSparse, Values as GltfSparseValues},
         IndexComponentType,
     },
-    extensions::material::{IndexOfRefraction, Ior, Material, Specular, SpecularFactor},
-    extensions::texture::{
-        Info as GltfTexExtInfo, TextureTransform as GltfTexTransform,
-        TextureTransformOffset as GltfTexOffset, TextureTransformRotation as GltfTexRotation,
-        TextureTransformScale as GltfTexScale,
+    extensions::{
+        material::{IndexOfRefraction, Ior, Material, Specular, SpecularFactor},
+        texture::{
+            Info as GltfTexExtInfo, TextureTransform as GltfTexTransform,
+            TextureTransformOffset as GltfTexOffset, TextureTransformRotation as GltfTexRotation,
+            TextureTransformScale as GltfTexScale,
+        },
     },
     image::MimeType,
-    material::{EmissiveFactor, NormalTexture, PbrMetallicRoughness, StrengthFactor},
+    material::{
+        EmissiveFactor, NormalTexture, PbrBaseColorFactor, PbrMetallicRoughness, StrengthFactor,
+    },
     mesh::{MorphTarget, Primitive as GltfPrimitive},
     texture::Info as GltfTexInfo,
     validation::Checked::Valid as GltfValid,
@@ -145,11 +149,15 @@ fn translate_nodes(input: &XmacFile, outputs: &mut Outputs) -> Result<()> {
 
             let transform =
                 Mat4::from_rotation_translation(node.rotation, pos) * Mat4::from_scale(scale);
+            let matrix = if transform != Mat4::IDENTITY {
+                Some(transform.to_cols_array())
+            } else {
+                None
+            };
 
             let gltf_node = GltfNode {
                 name: Some(node.name.clone()),
-                matrix: Some(transform.to_cols_array()),
-
+                matrix,
                 ..GltfNode::default()
             };
             let gltf_node = outputs.gltf.push(gltf_node);
@@ -561,12 +569,25 @@ fn calculate_relevant_joint_ids(
     joints.dedup();
 
     let nodes = input.get_nodes_chunk().unwrap();
+
+    let missing_parents: HashSet<_> = joints
+        .iter()
+        .filter_map(|jid| nodes.nodes[*jid as usize].parent_idx)
+        .filter(|pid| joints.binary_search(&(*pid as u16)).is_err())
+        .collect();
     // Include all intermediary and leaf bones, even if they have no influences:
+    // this assumes that parents always have a lower node idx than their children to work correctly:
     for (node_idx, node) in nodes.nodes.iter().enumerate() {
         if let Some(parent_idx) = node.parent_idx {
-            if !joints.contains(&(parent_idx as u16)) {
-                continue; // parent is not part of the skeleton
+            if joints.binary_search(&(parent_idx as u16)).is_ok() {
+                //parent is part of the skeleton, test this one
+
+                if let Err(insert_loc) = joints.binary_search(&(node_idx as u16)) {
+                    joints.insert(insert_loc, node_idx as u16);
+                }
             }
+        }
+        if missing_parents.contains(&node_idx) {
             if let Err(insert_loc) = joints.binary_search(&(node_idx as u16)) {
                 joints.insert(insert_loc, node_idx as u16);
             }
@@ -821,12 +842,6 @@ fn translate_materials(input: &XmacFile, outputs: &mut Outputs) -> Result<()> {
                 // specular_color_factor: SpecularColorFactor(
                 //     Into::<Vec3>::into(&material.specular_color).into(),
                 // ),
-                specular_color_texture: Some(GltfTexInfo {
-                    index: tex,
-                    tex_coord: 0,
-                    extensions: Some(GltfTexExtInfo { texture_transform }),
-                    extras: None,
-                }),
                 ..Default::default()
             })
         } else {
@@ -834,13 +849,19 @@ fn translate_materials(input: &XmacFile, outputs: &mut Outputs) -> Result<()> {
         };
 
         let normal_texture = if let Some(bump_layer) = bump_layer {
+            if bump_layer.u_tiling != bump_layer.v_tiling {
+                println!(
+                    "Warn: Normal-Map scaling is only supported uniformly, source has {}x{}",
+                    bump_layer.u_tiling, bump_layer.v_tiling
+                );
+            }
             Some(NormalTexture {
                 index: xmac_mat_layer_to_texture(
                     format!("{}_normal", material.name),
                     bump_layer,
                     outputs.gltf,
                 ),
-                scale: 1.0,
+                scale: bump_layer.u_tiling,
                 tex_coord: 0,
                 extensions: None,
                 extras: None,
@@ -862,7 +883,7 @@ fn translate_materials(input: &XmacFile, outputs: &mut Outputs) -> Result<()> {
             double_sided: material.double_sided,
             name: Some(material.name.clone()),
             pbr_metallic_roughness: PbrMetallicRoughness {
-                //base_color_factor: todo!(),
+                base_color_factor: PbrBaseColorFactor([1.0, 1.0, 1.0, material.opacity]),
                 base_color_texture,
                 metallic_factor: StrengthFactor(0.0),
                 //roughness_factor: todo!(),

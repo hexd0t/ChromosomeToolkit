@@ -175,8 +175,6 @@ impl XmacNode {
 
         let unknown6 = read_f32_endian(src, big_endian)?;
         let node_name = read_xmac_str(src, big_endian)?;
-        let obb_decomp = oriented_bounding_box.to_scale_rotation_translation();
-        println!("{node_name} {obb_decomp:?}");
         let node = XmacNode {
             name: node_name,
             rotation,

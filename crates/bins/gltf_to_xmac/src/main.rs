@@ -58,7 +58,17 @@ fn main() {
             serde_json::from_reader(in_data).unwrap()
         } else {
             let (gltf, buffer, textures) = gltf::import(path).unwrap();
-            let result = translation::gltf_to_xmac(gltf, buffer, textures, file_time).unwrap();
+            let result = translation::gltf_to_xmac(
+                gltf,
+                buffer,
+                textures,
+                path.file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap()
+                    .to_string(),
+                file_time,
+            )
+            .unwrap();
             println!("Translation done");
             result
         };
