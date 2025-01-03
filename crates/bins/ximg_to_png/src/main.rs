@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, env, ffi::OsString, io::Seek, path::Path};
 
-use formats::ximg::XimgFile;
+use formats::file_formats::ximg::XimgFile;
 fn main() {
     println!("Chromosome Toolkit - R1 - XIMG to PNG");
     let mut queue = env::args().skip(1).collect::<VecDeque<_>>();

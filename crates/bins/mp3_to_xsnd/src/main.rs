@@ -1,4 +1,4 @@
-use formats::xsnd::{SndFile, SndFileProps, SoundFlags};
+use formats::file_formats::xsnd::{SndFile, SndFileProps, SoundFlags};
 use std::{collections::VecDeque, env, ffi::OsString, path::Path};
 use symphonia::core::{
     audio::AudioBufferRef,

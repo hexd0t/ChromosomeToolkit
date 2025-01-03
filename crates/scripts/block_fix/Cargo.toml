@@ -1,0 +1,12 @@
+[package]
+name = "block_fix"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+name = "script_block_fix"
+
+[dependencies]
+formats = { path = "../../formats"}
+winapi = {version="0.3", features = ["consoleapi"]}

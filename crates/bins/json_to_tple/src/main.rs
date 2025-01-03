@@ -1,5 +1,5 @@
 use formats::archive::PakFile;
-use formats::tple::TpleFile;
+use formats::file_formats::tple::TpleFile;
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};

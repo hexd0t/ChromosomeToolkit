@@ -9,18 +9,19 @@ use std::{
 use super::{ConvError, Result};
 use formats::{
     binimport::BinImport,
-    helpers::{write_f32, write_u16, write_u32},
-    types::{Mat4, Vec2, Vec3, Vec4},
-    ximg::XimgFile,
-    xmac::{
+    file_formats::ximg::XimgFile,
+    file_formats::xmac::{
         chunks::{
             material::{XmacLayerBlendMode, XmacMaterialLayerType, XmacStandardMaterialLayer},
             mesh::{XmacMesh, XmacMeshSubmesh},
             morph_targets::MeshDeformDelta,
+            nodes::XmacNodeId,
             skinning_info::XmacSkinningInfo,
         },
         XmacFile,
     },
+    helpers::{write_f32, write_u16, write_u32},
+    types::{Mat4, Vec2, Vec3, Vec4},
 };
 use gltf::json::{
     accessor::{
@@ -529,18 +530,12 @@ fn translate_skinning(input: &XmacFile, outputs: &mut Outputs) -> Result<()> {
     Ok(())
 }
 
-fn get_gltf_mesh_for_node(
-    gltf: &mut GltfRoot,
-    node_id: formats::xmac::chunks::nodes::XmacNodeId,
-) -> &mut GltfMesh {
+fn get_gltf_mesh_for_node(gltf: &mut GltfRoot, node_id: XmacNodeId) -> &mut GltfMesh {
     let mesh_idx = get_gltf_mesh_idx_for_node(gltf, node_id);
     gltf.meshes.get_mut(mesh_idx).unwrap()
 }
 
-fn get_gltf_mesh_idx_for_node(
-    gltf: &GltfRoot,
-    node_id: formats::xmac::chunks::nodes::XmacNodeId,
-) -> usize {
+fn get_gltf_mesh_idx_for_node(gltf: &GltfRoot, node_id: XmacNodeId) -> usize {
     gltf.nodes[node_id.0 as usize].mesh.unwrap().value()
 }
 

@@ -3902,3 +3902,54 @@ pub enum WrittenType {
     /// gEWrittenType_Map    
     Map = 0x00000003,
 }
+
+/// gEActionAxis
+#[derive(Debug, Deserialize, Serialize, IntoPrimitive, TryFromPrimitive, Clone, Copy)]
+#[repr(u32)]
+pub enum ActionAxis {
+    Undefined = 0,
+    TurnLeftRight,
+    TurnUpDown,
+}
+
+/// gEActionAxis
+#[derive(Debug, Deserialize, Serialize, IntoPrimitive, TryFromPrimitive, Clone, Copy)]
+#[repr(u32)]
+pub enum ActionKey {
+    Undefined = 0,
+    MoveForward,
+    MoveBackward,
+    MoveLeft,
+    MoveRight,
+    MoveUp,
+    MoveDown,
+    TurnLeft,
+    TurnRight,
+    TurnUp,
+    TurnDown,
+    ZoomIn,
+    ZoomOut,
+    LookBack,
+    Walk,
+    WeaponMode,
+    PrimaryAction,
+    SecondaryAction,
+    QuickUse0,
+    QuickUse1,
+    QuickUse2,
+    QuickUse3,
+    QuickUse4,
+    QuickUse5,
+    QuickUse6,
+    QuickUse7,
+    QuickUse8,
+    QuickUse9,
+    QuickBar,
+    Inventory,
+    Map,
+    Log,
+    Equipment,
+    Escape,
+    QuickSave,
+    QuickLoad,
+}

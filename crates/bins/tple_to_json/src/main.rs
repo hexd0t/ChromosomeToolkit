@@ -1,5 +1,5 @@
 use formats::archive::PakFile;
-use formats::tple::TpleFile;
+use formats::file_formats::tple::TpleFile;
 use serde::Serialize;
 use std::collections::VecDeque;
 use std::io::Write;

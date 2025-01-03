@@ -1,4 +1,4 @@
-use formats::{archive::PakFile, lrent::LrentFile};
+use formats::{archive::PakFile, file_formats::lrent::LrentFile};
 use serde::Serialize;
 use std::collections::VecDeque;
 use std::io::Write;

@@ -4,13 +4,12 @@ use std::{
 };
 
 use formats::{
-    types::{properties::Property, BoundingBox, Mat4, Quat, Vec2, Vec3, Vec4},
-    xmac::{
+    file_formats::xmac::{
         chunks::{
             info::XmacInfo,
             material::{
-                XmacLayerBlendMode, XmacMaterialLayerType, XmacStandardMaterialLayer,
-                XmacStdMaterial,
+                XmacLayerBlendMode, XmacMaterialLayerType, XmacMaterialTransparencyType,
+                XmacStandardMaterialLayer, XmacStdMaterial,
             },
             material_info::XmacMaterialInfo,
             mesh::{XmacMesh, XmacMeshAttrib, XmacMeshAttribLayer, XmacMeshSubmesh},
@@ -20,6 +19,7 @@ use formats::{
         },
         XmacFile,
     },
+    types::{properties::Property, BoundingBox, Mat4, Quat, Vec2, Vec3, Vec4},
 };
 
 use gltf::{scene::Transform, Primitive, Semantic};
@@ -690,8 +690,7 @@ fn translate_materials(gltf: &gltf::Document, output: &mut XmacFile) -> Result<(
             refraction_index,
             double_sided: gltf_material.double_sided(),
             wireframe: false,
-            transparency_type:
-                formats::xmac::chunks::material::XmacMaterialTransparencyType::Filter,
+            transparency_type: XmacMaterialTransparencyType::Filter,
         };
         output.chunks.push(XmacChunk::StdMaterial(mat));
     }

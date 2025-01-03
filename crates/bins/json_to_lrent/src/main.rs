@@ -1,4 +1,4 @@
-use formats::{archive::PakFile, lrent::LrentFile};
+use formats::{archive::PakFile, file_formats::lrent::LrentFile};
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};

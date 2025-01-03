@@ -8,7 +8,7 @@ use std::{
     time::SystemTime,
 };
 
-use formats::xmac::XmacFile;
+use formats::file_formats::xmac::XmacFile;
 
 mod translation;
 

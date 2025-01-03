@@ -45,6 +45,20 @@
             "environment": [],
             "console": "integratedTerminal",
             "preLaunchTask": "build tple_to_json"
+        },
+        {
+            "name": "Launch Risen",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "D:\\SteamLibrary\\steamapps\\common\\Risen\\bin\\Risen.exe",
+            "symbolSearchPath": "${workspaceRoot}/target/debug",
+            "args": [
+                ""
+            ],
+            "stopAtEntry": false,
+            "cwd": "D:\\SteamLibrary\\steamapps\\common\\Risen\\bin",
+            "environment": [],
+            "console": "integratedTerminal",
         }
     ]
 }

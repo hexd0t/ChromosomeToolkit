@@ -7,7 +7,7 @@ use std::{
     path::Path,
 };
 
-use formats::xmac::XmacFile;
+use formats::file_formats::xmac::XmacFile;
 use serde::Serialize;
 mod translation;
 

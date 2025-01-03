@@ -2,6 +2,7 @@
 name = "formats"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 
 [dependencies]
 bitflags = { version = "2.6", features = ["serde"] }
