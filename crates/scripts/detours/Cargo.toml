@@ -9,3 +9,5 @@ name = "script_detours"
 
 [dependencies]
 formats = { path = "../../formats"}
+winapi = {version="0.3", features = ["consoleapi"]}
+

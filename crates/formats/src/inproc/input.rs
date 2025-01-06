@@ -1,5 +1,7 @@
 use std::env::consts;
 
+use winapi::um::{errhandlingapi::GetLastError, memoryapi::VirtualProtect};
+
 use crate::types::properties::enums::ActionKey;
 
 use super::modules::ModuleAdmin;
@@ -51,6 +53,8 @@ mod imports {
             this: *const NativeActionAdmin,
             sensitivity: f32,
         );
+        #[link_name = "\x01?ScanForTestMode@gCActionAdmin@@QEAAX_W@Z"]
+        pub(super) unsafe fn action_scan_for_testmode(this: *const NativeActionAdmin, char: u16);
     }
 }
 
@@ -73,6 +77,39 @@ impl ActionAdmin {
     pub fn set_camera_sens(&self, sensitivity: f32) {
         unsafe {
             imports::action_set_camera_sens(self.native, sensitivity);
+        }
+    }
+
+    /// Modifies the ScanForTestMode method to allow 2s again instead of 0.2
+    /// by changing which float is compared against
+    /// (which the devs have hacked in after slowing down input timescales...)
+    pub fn patch_testmode(&self) {
+        unsafe {
+            let func: unsafe extern "C" fn(*const NativeActionAdmin, u16) =
+                imports::action_scan_for_testmode;
+
+            let ptr: *mut u8 = func as _;
+            let mut oldprotect: u32 = 0;
+            const NEWFLAGS: u32 = 0x40;
+            if VirtualProtect(ptr as _, 0x40, NEWFLAGS, &mut oldprotect) == 0 {
+                println!(
+                    "Cannot patch Testmode timing, VirtualProtect failed: {:x}",
+                    GetLastError()
+                );
+                return;
+            }
+            if *ptr.add(0x3C) == 0x24 && *ptr.add(0x3D) == 0xFE {
+                *ptr.add(0x3C) = 0x10;
+                *ptr.add(0x3D) = 0xFF;
+                println!("Patched Testmode timing");
+            } else {
+                println!(
+                    "Timing bytes don't match expected: {} {}",
+                    *ptr.add(0x3C),
+                    *ptr.add(0x3D)
+                );
+            }
+            VirtualProtect(ptr as _, 0x40, oldprotect, &mut oldprotect);
         }
     }
 }

@@ -10,6 +10,7 @@ members = [
     "crates/bins/gltf_to_xmac",
     "crates/bins/ximg_to_png",
     "crates/scripts/block_fix",
+    "crates/scripts/detours",
 ]
 resolver = "2"
 

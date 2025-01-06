@@ -130,6 +130,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "detours"
+version = "0.1.0"
+dependencies = [
+ "formats",
+ "winapi",
+]
+
+[[package]]
 name = "encoding_rs"
 version = "0.8.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -185,6 +193,7 @@ dependencies = [
  "num_enum",
  "serde",
  "uuid",
+ "winapi",
 ]
 
 [[package]]

@@ -21,6 +21,7 @@ pub extern "stdcall" fn on_key_pressed(
 
     let action_admin = get_action_admin();
     action_admin.set_camera_sens(1.0);
+    action_admin.patch_testmode();
     println!(
         "SecDur: {} / {key:?}",
         action_admin.get_key_press_duration(ActionKey::SecondaryAction)
