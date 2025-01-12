@@ -1,5 +1,3 @@
-use std::env::consts;
-
 use winapi::um::{errhandlingapi::GetLastError, memoryapi::VirtualProtect};
 
 use crate::types::properties::enums::ActionKey;

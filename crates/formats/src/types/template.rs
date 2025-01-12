@@ -35,9 +35,11 @@ impl TemplatePropertyAccessor {
         }
         let prop_class_name = accessor_prop.object.get_class_name();
         if class_name != prop_class_name {
-            return Err(Error::InvalidStructure(
-                "Template class name != Object class name".to_string(),
-            ));
+            let msg = format!(
+                "Template class name != Object class name ('{class_name}' != '{prop_class_name}')"
+            );
+            //println!("Warning: {msg}");
+            return Err(Error::InvalidStructure(msg));
         }
 
         let magic = read_u32(src)?;

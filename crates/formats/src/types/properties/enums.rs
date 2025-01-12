@@ -668,6 +668,8 @@ pub enum PhysicRangeType {
     ProcessingRange = 0x00000001,
     /// eEPhysicRangeType_VisibilityRange
     VisibilityRange = 0x00000002,
+
+    Unknown1 = 0x1bcab0e8,
 }
 
 // eCGuiPictureBox2.PictureMode

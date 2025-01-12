@@ -10,9 +10,3 @@ name = "script_block_fix"
 [dependencies]
 formats = { path = "../../formats"}
 winapi = {version="0.3", features = ["consoleapi"]}
-
-[profile.release]
-opt-level = "s"
-debug=2
-lto=true
-codegen-units = 1

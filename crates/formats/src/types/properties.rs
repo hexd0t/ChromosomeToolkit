@@ -286,6 +286,7 @@ impl Property {
                 assert_eq!(data_len, 6); //enum header u16 + enum u32
                 PropData::Enum(Self::load_enum(src, ty.as_str(), true)?)
             }
+            "eCScriptProxyScript" => PropData::ScriptProxyScript(ScriptProxyScript::load(src)?),
             _ if ty.starts_with("bTPropertyContainer<enum ") => {
                 assert_eq!(data_len, 6); //enum header u16 + enum u32
                 const NAME_START: usize = "bTPropertyContainer<enum ".len();
@@ -408,6 +409,10 @@ impl Property {
                 let name = Self::save_enum(&mut block, prop_enum, true)?;
                 dynamic_type = format!("bTPropertyContainer<enum {name}>");
                 dynamic_type.as_str()
+            }
+            PropData::ScriptProxyScript(script_proxy_script) => {
+                script_proxy_script.save(&mut block)?;
+                "eCScriptProxyScript"
             }
         };
 
@@ -1020,9 +1025,9 @@ impl Property {
             PropEnum::GammaRamp(e) => ("gEGammaRamp", (*e).into()),
             PropEnum::Gender(e) => ("gEGender", (*e).into()),
             PropEnum::GuardStatus(e) => ("gEGuardStatus", (*e).into()),
-            PropEnum::NpcGuardStatus(e) => ("gCNPC_PS_gEGuardStatus", (*e).into()),
+            PropEnum::NpcGuardStatus(e) => ("gEGuardStatus", (*e).into()),
             PropEnum::Guild(e) => ("gEGuild", (*e).into()),
-            PropEnum::NpcGuild(e) => ("gCNPC_PS_gEGuild", (*e).into()),
+            PropEnum::NpcGuild(e) => ("gEGuild", (*e).into()),
             PropEnum::HitDirection(e) => ("gEHitDirection", (*e).into()),
             PropEnum::HudPage(e) => ("gEHudPage", (*e).into()),
             PropEnum::HudPageProgessBar(e) => ("gCPageTimerProgressBar::gEHudPage", (*e).into()),
@@ -1127,6 +1132,7 @@ pub enum PropData {
     ContainerEnum(PropEnum),
     Enum(PropEnum),
     Buffer(PropBuffer),
+    ScriptProxyScript(ScriptProxyScript),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1330,4 +1336,28 @@ pub enum PropEnum {
 pub struct UnknownEnum {
     pub name: String,
     pub val: u32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ScriptProxyScript {
+    pub version: u16,
+    pub name: Option<String>,
+}
+
+impl ArchiveSerializable for ScriptProxyScript {
+    fn load<R: ArchiveReadTarget>(src: &mut R) -> Result<Self> {
+        let version = read_u16(src)?;
+        let is_set = read_bool(src)?;
+        let name = if is_set { Some(src.read_str()?) } else { None };
+        Ok(Self { version, name })
+    }
+
+    fn save<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<()> {
+        write_u16(dst, self.version)?;
+        write_bool(dst, self.name.is_some())?;
+        if let Some(name) = &self.name {
+            dst.write_str(name)?;
+        }
+        Ok(())
+    }
 }

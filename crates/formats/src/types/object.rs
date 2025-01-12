@@ -1,3 +1,5 @@
+use std::io::Seek;
+
 use serde::{Deserialize, Serialize};
 
 use super::*;
@@ -22,14 +24,22 @@ impl Object {
         let object_data_size = read_u32(src)? as usize;
         let prop_start_off = src.current_read_idx;
         let prop_data_ver = read_u16(src)?;
-        assert_eq!(prop_data_ver, 201);
+        if prop_data_ver != 201 {
+            return Err(Error::UnknownVersion(format!(
+                "Unknown prop data version {prop_data_ver}!"
+            )));
+        }
         let prop_count = read_u32(src)? as usize;
         let mut props = Vec::with_capacity(prop_count);
         for _idx in 0..prop_count {
             props.push(properties::Property::load(src)?);
         }
-        println!("Loading class {class_name}");
+
         let class_len = prop_start_off + object_data_size - src.current_read_idx;
+        println!(
+            "Loading class {class_name} ({class_len}@0x{:x})",
+            src.stream_position()?
+        );
 
         let class = GenClass::load(src, class_name, class_len)?;
         if src.current_read_idx != prop_start_off + object_data_size {

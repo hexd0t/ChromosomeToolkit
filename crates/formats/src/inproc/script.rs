@@ -1,6 +1,3 @@
-use std::thread;
-use std::time::Duration;
-
 use super::arrays::{ObjArray, StringObjMap};
 use super::string::{EngineString, NativeString};
 

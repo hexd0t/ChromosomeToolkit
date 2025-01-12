@@ -241,3 +241,8 @@ impl ArchiveWriteTarget for TempWriteTarget<'_> {
 
 impl ArchiveWriteTarget for Cursor<Vec<u8>> {}
 impl ArchiveWriteTarget for BufWriter<File> {}
+
+pub trait ArchiveSerializable: Sized + for<'a> serde::Deserialize<'a> + serde::Serialize {
+    fn load<R: ArchiveReadTarget>(src: &mut R) -> Result<Self>;
+    fn save<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<()>;
+}

@@ -1,3 +1,4 @@
+pub mod containers;
 pub mod entity;
 pub mod object;
 pub mod properties;
@@ -46,6 +47,15 @@ impl GenClass {
             "gCInventory_PS" => {
                 GenClass::PropertySet(PropertySet::Inventory(Inventory::load(src)?))
             }
+            "gCInteraction_PS" => {
+                GenClass::PropertySet(PropertySet::Interaction(Interaction::load(src)?))
+            }
+            "gCParty_PS" => GenClass::PropertySet(PropertySet::Party(Party::load(src)?)),
+            "eCAnimation_PS" => {
+                GenClass::PropertySet(PropertySet::Animation(Animation::load(src)?))
+            }
+            "eCMesh_PS" => GenClass::PropertySet(PropertySet::Mesh(Mesh::load(src)?)),
+            "gCAnchor_PS" => GenClass::PropertySet(PropertySet::Anchor(Anchor::load(src, len)?)),
             "" | "INVALID" => {
                 assert_eq!(len, 2);
                 let inv_pad = read_u16(src)?;
@@ -96,7 +106,7 @@ impl GenClass {
             GenClass::Opaque(OpaqueClass { name, data: _ }) => name.as_str(),
             GenClass::DynamicLayer(_) => "gCDynamicLayer",
             GenClass::EntityDynamicContext(_) => "eCEntityDynamicContext",
-            GenClass::PropertySet(_) => "gCInventory_PS",
+            GenClass::PropertySet(ps) => ps.get_class_name(),
         }
     }
 }
@@ -240,9 +250,20 @@ impl Sphere {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+/// eCEntityProxy
 pub struct EntityProxy {
     pub version: u16,
     pub id: Option<PropertyId>,
+}
+
+impl ArchiveSerializable for EntityProxy {
+    fn load<R: ArchiveReadTarget>(src: &mut R) -> Result<Self> {
+        Self::load(src, true)
+    }
+
+    fn save<W: ArchiveWriteTarget>(&self, dst: &mut W) -> Result<()> {
+        self.save(dst, true)
+    }
 }
 
 impl EntityProxy {
@@ -276,8 +297,8 @@ impl EntityProxy {
 /// bCPropertyID
 #[derive(Debug, Deserialize, Serialize)]
 pub struct PropertyId {
-    id: Uuid,
-    unknown: u32,
+    pub id: Uuid,
+    pub unknown: u32,
 }
 
 impl PropertyId {
