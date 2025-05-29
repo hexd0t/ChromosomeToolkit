@@ -2,7 +2,11 @@
 pub struct EngineTimer {
     native: *const NativeEngineTimer,
 }
-struct NativeEngineTimer(());
+
+#[repr(C)]
+struct NativeEngineTimer {
+    _opaque: [u8; 0],
+}
 
 mod imports {
 

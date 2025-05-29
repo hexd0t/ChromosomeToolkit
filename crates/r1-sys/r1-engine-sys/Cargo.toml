@@ -1,0 +1,14 @@
+[package]
+name = "r1-engine-sys"
+version = "0.1.0"
+edition = "2024"
+links = "Engine"
+
+[dependencies]
+r1-sharedbase-sys = {path = "../r1-sharedbase-sys"}
+serde = { workspace = true }
+num_enum = { workspace = true }
+windows = {workspace = true, features = ["Win32", "Win32_Graphics_Direct3D9"]}
+
+[build-dependencies]
+gluegen = {path = "../gluegen"}

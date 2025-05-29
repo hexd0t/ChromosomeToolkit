@@ -5,7 +5,7 @@ use formats::inproc::input::get_action_admin;
 use formats::inproc::script::ScriptInitData;
 static SCRIPT_INIT_DATA: LazyLock<ScriptInitData> = LazyLock::new(ScriptInitData::default);
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "stdcall" fn ScriptInit() -> *const ScriptInitData {
     //winapi::um::consoleapi::AllocConsole();
     println!("Block-Fix ScriptInit");

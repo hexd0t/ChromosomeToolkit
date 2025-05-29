@@ -6,4 +6,6 @@ EXPORTS
 <Export names>
 ```
 
-And then compiling these into libs usink `lib /def:<name>.def /out:<name>.lib`
+And then compiling these into libs using `lib /def:<name>.def /out:<name>.lib`
+
+(Both tools are part of the MSVC toolchain)

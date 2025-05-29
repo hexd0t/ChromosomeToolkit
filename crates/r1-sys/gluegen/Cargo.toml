@@ -1,0 +1,8 @@
+[package]
+name = "gluegen"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+msvc-demangler = "0.10"
+convert_case = "0.7"

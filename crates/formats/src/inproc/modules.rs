@@ -4,7 +4,10 @@ pub struct ModuleAdmin {
     native: *const NativeModuleAdmin,
 }
 
-struct NativeModuleAdmin(());
+#[repr(C)]
+struct NativeModuleAdmin {
+    _opaque: [u8; 0],
+}
 
 mod imports {
     use crate::inproc::string::NativeString;
@@ -36,10 +39,6 @@ impl ModuleAdmin {
         let name = EngineString::new(name);
         let result =
             unsafe { imports::module_admin_find_module_str(self.native, name.get_native_ptr()) };
-        if result.is_null() {
-            None
-        } else {
-            Some(result)
-        }
+        if result.is_null() { None } else { Some(result) }
     }
 }

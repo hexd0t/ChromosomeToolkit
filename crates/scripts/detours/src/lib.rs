@@ -3,7 +3,6 @@ use std::{ops::Deref, sync::OnceLock};
 
 use formats::inproc::input::{get_action_admin, get_current_action_event};
 use formats::inproc::script::{ScriptFunctionMap, ScriptInitData};
-use formats::inproc::timer::EngineTimer;
 use formats::types::properties::enums::ActionKey;
 
 static SCRIPT_INIT_DATA: LazyLock<ScriptInitData> = LazyLock::new(ScriptInitData::default);
@@ -30,9 +29,13 @@ pub extern "stdcall" fn on_key_pressed(
     ORIG_KEY_PRESSED.get().unwrap()(spu, self_entity, other_entity, args)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
+/// # Safety:
+/// This function is only intended to be called ONCE by the game engine
 pub unsafe extern "stdcall" fn ScriptInit() -> *const ScriptInitData {
-    winapi::um::consoleapi::AllocConsole();
+    unsafe {
+        winapi::um::consoleapi::AllocConsole();
+    }
     println!("ScriptInit");
 
     let script_map = ScriptFunctionMap::get_instance();
@@ -50,11 +53,13 @@ pub unsafe extern "stdcall" fn ScriptInit() -> *const ScriptInitData {
         println!("OnMeleeHandleInput is not initialized yet!");
     } else {
         println!("detouring");
-        ORIG_KEY_PRESSED
-            .set(std::mem::transmute(
-                key_handler.as_ref().unwrap().get_function(),
-            ))
-            .unwrap();
+        unsafe {
+            ORIG_KEY_PRESSED
+                .set(std::mem::transmute(
+                    key_handler.as_ref().unwrap().get_function(),
+                ))
+                .unwrap();
+        }
         key_handler
             .as_mut()
             .unwrap()

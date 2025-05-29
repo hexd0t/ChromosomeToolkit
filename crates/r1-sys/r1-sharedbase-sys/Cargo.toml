@@ -1,0 +1,11 @@
+[package]
+name = "r1-sharedbase-sys"
+version = "0.1.0"
+edition = "2024"
+links = "SharedBase"
+
+[dependencies]
+windows = {workspace = true, features = ["Win32"]}
+
+[build-dependencies]
+gluegen = {path = "../gluegen"}

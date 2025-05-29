@@ -11,11 +11,15 @@ members = [
     "crates/bins/ximg_to_png",
     "crates/scripts/block_fix",
     "crates/scripts/detours",
+    "crates/r1-sys/r1-game-sys",
+    "crates/r1-sys/r1-sharedbase-sys",
+    "crates/r1-sys/gluegen", "crates/r1-sys/r1-engine-sys",
 ]
 resolver = "2"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
+num_enum = "0.7"
 gltf = { version = "1.4", features = [
     "KHR_materials_specular",
     "KHR_materials_ior",
@@ -23,6 +27,7 @@ gltf = { version = "1.4", features = [
     "extras",
 ] }
 image_dds = "0.6"
+windows = {version = "0.61.1"}
 
 [profile.release]
 strip = true
