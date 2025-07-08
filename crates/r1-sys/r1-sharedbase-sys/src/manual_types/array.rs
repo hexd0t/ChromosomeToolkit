@@ -1,7 +1,9 @@
 use std::{
+    marker::PhantomData,
     ops::{Index, IndexMut},
     ptr::null_mut,
 };
+use type_layout::TypeLayout;
 
 use super::*;
 
@@ -13,16 +15,20 @@ pub struct bTValArray<T: 'static> {
 
 #[repr(C)]
 pub struct bTObjArray<T: 'static>(pub bTValArray<T>);
+const _: () = assert!(size_of::<bTObjArray<()>>() == 16);
 
 #[repr(C)]
 pub struct bTPtrArray<T: 'static>(pub bTValArray<T>);
+const _: () = assert!(size_of::<bTPtrArray<()>>() == 16);
 
 #[repr(C)]
 pub struct bTArrayBase<T: 'static> {
-    pub data: *mut T,
-    pub count: u32,
-    pub capacity: u32,
+    pub data: *mut T,  //+0-7
+    pub count: u32,    //+8-11<
+    pub capacity: u32, //+12-15
 }
+
+const _: () = assert!(size_of::<bTArrayBase<()>>() == 16);
 
 impl<T: 'static> Default for bTArrayBase<T> {
     fn default() -> Self {
@@ -55,21 +61,18 @@ impl<T: Sized + 'static> IndexMut<usize> for bTArrayBase<T> {
     }
 }
 
-/// bTStringObjMap
 #[repr(C)]
 pub struct bTStringObjMap<T: 'static>(pub bTObjMap<bCString, T>);
 
-/// bTStringObjMap
 #[repr(C)]
 pub struct bTStringValMap<T: 'static>(pub bTValMap<bCString, T>);
 
-/// bTObjMap
 #[repr(C)]
 pub struct bTObjMap<K: 'static, T: 'static>(pub bTValMap<K, T>);
 
-/// bTValMap
 #[repr(C)]
 pub struct bTValMap<K: 'static + Sized, T: 'static + Sized> {
+    // not sure about the vtable, it doesn't seem to have virtual functions...?
     pub(super) vtable: *const (),
     pub(super) buckets: bTObjArray<*mut ValMapNode<K, T>>,
     pub(super) count: u32,
@@ -78,9 +81,26 @@ pub struct bTValMap<K: 'static + Sized, T: 'static + Sized> {
 const _: () = assert!(size_of::<bTValMap<String, String>>() == 0x20);
 
 #[repr(C)]
-pub(super) struct ValMapNode<K: Sized + 'static, T: Sized + 'static> {
+pub struct ValMapNode<K: Sized + 'static, T: Sized + 'static> {
     pub(super) key: K,
     pub(super) val: T,
     pub(super) hash: u32,
     pub(super) next: *mut ValMapNode<K, T>,
+}
+
+#[repr(C)]
+pub struct bTArrayMap_Entry<K: 'static + Sized, T: 'static + Sized> {
+    key: K,
+    value: T,
+}
+
+#[repr(C)]
+pub struct bTArrayMap<K: 'static + Sized, T: 'static + Sized> {
+    pub base: bTArrayBase<bTArrayMap_Entry<K, T>>,
+}
+
+#[repr(C)]
+pub struct bTArrayBase_bCConstIterator<T: 'static> {
+    _opaque: [u8; 0],
+    _phantom: PhantomData<T>,
 }

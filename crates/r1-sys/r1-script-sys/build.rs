@@ -4,7 +4,7 @@ use gluegen::generate_glue;
 
 fn main() {
     // rerun build script if definition file is changed:
-    let lib_name = "SharedBase";
+    let lib_name = "Script";
     println!("cargo::rerun-if-changed=lib/{lib_name}.def");
     println!("cargo::rustc-link-lib={lib_name}");
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -13,17 +13,7 @@ fn main() {
     println!("cargo:rustc-link-search=all={}", lib_dir.display());
 
     let def_file = std::fs::File::open(format!("lib/{lib_name}.def")).unwrap();
-    let manual_types = &["bCString", "bCVector", "bCVector2", "bCPoint", "bCRect"];
-    let additional_opaque_types = &[
-        "NxVec3",
-        "bCOctTreeEntryBase",
-        "bCOctTree_bEOctTreeCull",
-        "bCUnicodeString_bSUnicodeStringData",
-        "bCString_bSStringData",
-        "bSAllocationItem",
-        "bSAllocationSummery",
-        "bSMemoryStatistics",
-        "bSProfileStats",
-    ];
+    let manual_types = &[];
+    let additional_opaque_types = &[];
     generate_glue(def_file, lib_name, manual_types, additional_opaque_types);
 }

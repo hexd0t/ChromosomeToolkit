@@ -4,13 +4,13 @@ use std::{
     str,
 };
 
-/// bCString
 #[derive(Clone)]
 #[repr(C)]
 pub struct bCString {
-    //points to Null-Terminated str managed by engine
+    ///points to Null-Terminated str managed by engine
     data: *mut u8,
 }
+const _: () = assert!(size_of::<bCString>() == 8);
 
 impl bCString {
     pub fn get_str(&self) -> &str {

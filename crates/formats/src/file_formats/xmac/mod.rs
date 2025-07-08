@@ -1,17 +1,17 @@
 //! Resources on the XMAC format:
 //!  - O3DE (formerly Amazon Lumberyard) has an importer for XMAC, although a newer version
-//!    at https://github.com/o3de/o3de/tree/development/Gems/EMotionFX/Code/EMotionFX/Source
+//!    at <https://github.com/o3de/o3de/tree/development/Gems/EMotionFX/Code/EMotionFX/Source>
 //!    older commits contain more 'legacy' EMotionFX code
 //!    (since Amazon bought EmotionFX & employs their devs, this can be considered 'ground truth')
 //!    License: Apache 2 or MIT
 //!  - Lumberyard's archived repo has more old pieces of EMotionFX left:
-//!    at https://github.com/aws/lumberyard/blob/master/dev/Gems/EMotionFX/Code/EMotionFX/Source/Importer/ActorFileFormat.h
+//!    at <https://github.com/aws/lumberyard/blob/master/dev/Gems/EMotionFX/Code/EMotionFX/Source/Importer/ActorFileFormat.h>
 //!    License: AWS Agreement
 //!  - RisenEditor:
-//!    at https://github.com/hhergeth/RisenEditor
+//!    at <https://github.com/hhergeth/RisenEditor>
 //!    License: none
 //!  - Baltram's rmTools:
-//!    at https://github.com/Baltram/rmtools/blob/master/rmStuff/rmXmacReader.cpp
+//!    at <https://github.com/Baltram/rmtools/blob/master/rmStuff/rmXmacReader.cpp>
 //!    License: GPLv3
 
 pub mod chunks;
@@ -19,13 +19,13 @@ pub mod chunks;
 use std::{io::Write, time::SystemTime};
 
 use chunks::{
+    XmacChunk,
     material::XmacStdMaterial,
     material_info::XmacMaterialInfo,
     mesh::XmacMesh,
     morph_targets::XmacMorphTargets,
     nodes::{XmacNodeId, XmacNodes},
     skinning_info::XmacSkinningInfo,
-    XmacChunk,
 };
 use serde::{Deserialize, Serialize};
 

@@ -5,7 +5,11 @@ edition = "2024"
 links = "SharedBase"
 
 [dependencies]
-windows = {workspace = true, features = ["Win32"]}
+bitflags = { version = "2.9.1", features = ["serde"] }
+serde.workspace = true
+type-layout = "0.2.0"
+uuid = { version = "1.17.0", features = ["serde", "v4"] }
+windows = {workspace = true, features = ["Win32", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel"]}
 
 [build-dependencies]
 gluegen = {path = "../gluegen"}

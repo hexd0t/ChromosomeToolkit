@@ -40,7 +40,7 @@ struct Function {
     call_conv: msvc_demangler::CallingConv,
     is_static: bool,
     is_virtual: bool,
-    params: String,
+    params: Vec<String>,
     rettype: String,
     orig_name: String,
     symbol: String,
@@ -69,9 +69,10 @@ pub fn generate_glue(
 
     for symbol in definitions.lines().skip(1) {
         if symbol.as_bytes()[0] == b'?' {
+            eprintln!(" -+- {symbol} -+- ");
             demangle(symbol, &mut types, &mut globals);
         } else {
-            println!("{symbol}")
+            eprintln!(" --- {symbol} --- ");
         }
     }
 
@@ -82,16 +83,18 @@ pub fn generate_glue(
     writeln!(outfile, "pub use i8 as char;").unwrap();
     writeln!(outfile, "pub use i32 as long;").unwrap();
     writeln!(outfile, "pub use u32 as ulong;").unwrap();
+    writeln!(outfile, "#[allow(unused_imports)]").unwrap();
+    writeln!(outfile, "use std::marker::PhantomData;").unwrap();
     writeln!(outfile, "#[link(name = \"{lib_name}\")]").unwrap();
     writeln!(outfile, "#[allow(non_camel_case_types, unused_imports)]").unwrap();
     writeln!(outfile, "unsafe extern \"C\" {{").unwrap();
     globals.write(&mut outfile);
     writeln!(outfile, "}}").unwrap();
     for (name, ty) in types {
-        ty.write_links(&name, &mut outfile);
         if !manual_types.contains(&name.as_str()) {
             ty.write_type(&name, &mut outfile);
         }
+        ty.write_links(&name, &mut outfile);
     }
 
     for name in additional_opaque_types {
@@ -118,65 +121,86 @@ enum GenericsHandling {
 }
 
 fn name_cpp_to_rust(name: &Name<'_>, gen_han: GenericsHandling) -> Option<String> {
-    Some(match name {
-        Name::NonTemplate(symbol_name) => {
-            let symbol_name = std::str::from_utf8(symbol_name).unwrap();
-            symbol_name.to_string()
-        }
-        Name::Template(name, params) => {
-            let base = name_cpp_to_rust(name, gen_han).unwrap();
-            let generics = params_to_rust(None, params, false);
+    if let Some((base, generics)) = name_cpp_to_rust_parts(name) {
+        Some(if generics.is_empty() {
+            base
+        } else {
             match gen_han {
-                GenericsHandling::Flatten => format!("{base}_{}", flatten_name(&generics)),
-                GenericsHandling::AsGeneric => format!("{base}<{generics}>"),
+                GenericsHandling::Flatten => {
+                    format!("{base}_{}", flatten_name(&generics.join(", ")))
+                }
+                GenericsHandling::AsGeneric => format!("{base}<{}>", generics.join(", ")),
                 GenericsHandling::Skip => format!("{base}"),
             }
-        }
-        Name::Operator(Operator::Ctor) => "op_ctor".to_string(),
-        Name::Operator(Operator::New) => "op_new".to_string(),
-        Name::Operator(Operator::Call) => "op_call".to_string(),
-        Name::Operator(Operator::Equal) => "op_assign".to_string(),
-        Name::Operator(Operator::EqualEqual) => "op_equals".to_string(),
-        Name::Operator(Operator::Less) => "op_less".to_string(),
-        Name::Operator(Operator::LessEqual) => "op_less_eq".to_string(),
-        Name::Operator(Operator::Greater) => "op_greater".to_string(),
-        Name::Operator(Operator::GreaterEqual) => "op_greater_eq".to_string(),
-        Name::Operator(Operator::BangEqual) => "op_not_equals".to_string(),
-        Name::Operator(Operator::Dtor) => "op_dtor".to_string(),
-        Name::Operator(Operator::Delete) => "op_delete".to_string(),
-        Name::Operator(Operator::Subscript) => "op_index".to_string(),
-        Name::Operator(Operator::Star) => "op_star".to_string(),
-        Name::Operator(Operator::StarEqual) => "op_mul_into".to_string(),
-        Name::Operator(Operator::Plus) => "op_add".to_string(),
-        Name::Operator(Operator::PlusEqual) => "op_add_into".to_string(),
-        Name::Operator(Operator::PlusPlus) => "op_increment".to_string(),
-        Name::Operator(Operator::Minus) => "op_sub".to_string(),
-        Name::Operator(Operator::MinusEqual) => "op_sub_into".to_string(),
-        Name::Operator(Operator::MinusMinus) => "op_decrement".to_string(),
-        Name::Operator(Operator::Slash) => "op_div".to_string(),
-        Name::Operator(Operator::SlashEqual) => "op_div_into".to_string(),
-        Name::Operator(Operator::Amp) => "op_bin_and".to_string(),
-        Name::Operator(Operator::AmpEqual) => "op_bin_and_into".to_string(),
-        Name::Operator(Operator::Pipe) => "op_bin_or".to_string(),
-        Name::Operator(Operator::PipeEqual) => "op_bin_or_into".to_string(),
-        Name::Operator(Operator::Caret) => "op_bin_xor".to_string(),
-        Name::Operator(Operator::CaretEqual) => "op_bin_xor_into".to_string(),
-        Name::Operator(Operator::Tilde) => "op_invert".to_string(),
-        Name::Operator(Operator::RShift) => "op_rshift".to_string(),
-        Name::Operator(Operator::GreaterGreaterEqual) => "op_rshift_into".to_string(),
-        Name::Operator(Operator::LShift) => "op_lshift".to_string(),
-        Name::Operator(Operator::LessLessEqual) => "op_lshift_into".to_string(),
-        Name::Operator(Operator::DefaultCtorClosure) => "op_ctor_closure".to_string(),
-        Name::Operator(Operator::Conversion) => "op_conversion".to_string(),
-        Name::Operator(Operator::Arrow) => "op_deref".to_string(),
-        Name::Operator(Operator::VFTable) | Name::Operator(Operator::VBTable) => String::new(),
-        Name::Discriminator(_) | Name::ParsedName(_) => {
-            return None;
-        }
-        unknown => {
-            panic!("Unknown symbol name type: {unknown:?}");
-        }
-    })
+        })
+    } else {
+        None
+    }
+}
+
+/// returns the name and (optionally) any generic parameters if existing
+fn name_cpp_to_rust_parts(name: &Name<'_>) -> Option<(String, Vec<String>)> {
+    Some((
+        match name {
+            Name::NonTemplate(symbol_name) => {
+                let symbol_name = std::str::from_utf8(symbol_name).unwrap();
+                symbol_name.to_string()
+            }
+            Name::Template(name, params) => {
+                let (base, inner_generics) = name_cpp_to_rust_parts(name).unwrap();
+                let mut generics = params_to_rust(None, params, false);
+                if !inner_generics.is_empty() {
+                    generics.extend(inner_generics);
+                }
+                return Some((base, generics));
+            }
+            Name::Operator(Operator::Ctor) => "op_ctor".to_string(),
+            Name::Operator(Operator::New) => "op_new".to_string(),
+            Name::Operator(Operator::Call) => "op_call".to_string(),
+            Name::Operator(Operator::Equal) => "op_assign".to_string(),
+            Name::Operator(Operator::EqualEqual) => "op_equals".to_string(),
+            Name::Operator(Operator::Less) => "op_less".to_string(),
+            Name::Operator(Operator::LessEqual) => "op_less_eq".to_string(),
+            Name::Operator(Operator::Greater) => "op_greater".to_string(),
+            Name::Operator(Operator::GreaterEqual) => "op_greater_eq".to_string(),
+            Name::Operator(Operator::BangEqual) => "op_not_equals".to_string(),
+            Name::Operator(Operator::Dtor) => "op_dtor".to_string(),
+            Name::Operator(Operator::Delete) => "op_delete".to_string(),
+            Name::Operator(Operator::Subscript) => "op_index".to_string(),
+            Name::Operator(Operator::Star) => "op_star".to_string(),
+            Name::Operator(Operator::StarEqual) => "op_mul_into".to_string(),
+            Name::Operator(Operator::Plus) => "op_add".to_string(),
+            Name::Operator(Operator::PlusEqual) => "op_add_into".to_string(),
+            Name::Operator(Operator::PlusPlus) => "op_increment".to_string(),
+            Name::Operator(Operator::Minus) => "op_sub".to_string(),
+            Name::Operator(Operator::MinusEqual) => "op_sub_into".to_string(),
+            Name::Operator(Operator::MinusMinus) => "op_decrement".to_string(),
+            Name::Operator(Operator::Slash) => "op_div".to_string(),
+            Name::Operator(Operator::SlashEqual) => "op_div_into".to_string(),
+            Name::Operator(Operator::Amp) => "op_bin_and".to_string(),
+            Name::Operator(Operator::AmpEqual) => "op_bin_and_into".to_string(),
+            Name::Operator(Operator::Pipe) => "op_bin_or".to_string(),
+            Name::Operator(Operator::PipeEqual) => "op_bin_or_into".to_string(),
+            Name::Operator(Operator::Caret) => "op_bin_xor".to_string(),
+            Name::Operator(Operator::CaretEqual) => "op_bin_xor_into".to_string(),
+            Name::Operator(Operator::Tilde) => "op_invert".to_string(),
+            Name::Operator(Operator::RShift) => "op_rshift".to_string(),
+            Name::Operator(Operator::GreaterGreaterEqual) => "op_rshift_into".to_string(),
+            Name::Operator(Operator::LShift) => "op_lshift".to_string(),
+            Name::Operator(Operator::LessLessEqual) => "op_lshift_into".to_string(),
+            Name::Operator(Operator::DefaultCtorClosure) => "op_ctor_closure".to_string(),
+            Name::Operator(Operator::Conversion) => "op_conversion".to_string(),
+            Name::Operator(Operator::Arrow) => "op_deref".to_string(),
+            Name::Operator(Operator::VFTable) | Name::Operator(Operator::VBTable) => String::new(),
+            Name::Discriminator(_) | Name::ParsedName(_) => {
+                return None;
+            }
+            unknown => {
+                panic!("Unknown symbol name type: {unknown:?}");
+            }
+        },
+        vec![],
+    ))
 }
 
 fn demangle(symbol: &str, types: &mut HashMap<String, Type>, globals: &mut Globals) {
@@ -278,8 +302,9 @@ fn demangle_class_member<'a, I: Iterator<Item = &'a Name<'a>>>(
 
         match &demangled.symbol_type {
             msvc_demangler::Type::MemberFunction(cl, conv, params, storage, rettype) => {
-                Function::new(
-                    &class_name,
+                eprintln!("{class_name} -> {symbol_name}");
+                class.methods.push(Function::new(
+                    &name_cpp_to_rust(cpp_class_name, GenericsHandling::AsGeneric).unwrap(),
                     symbol_name,
                     cl,
                     conv,
@@ -287,7 +312,7 @@ fn demangle_class_member<'a, I: Iterator<Item = &'a Name<'a>>>(
                     storage,
                     symbol,
                     rettype,
-                );
+                ));
             }
             msvc_demangler::Type::CXXVFTable(ns, _) => {
                 if ns.names.is_empty() && !matches!(&class.vtable, VTable::Multiple(_)) {
@@ -389,7 +414,7 @@ impl Function {
         writeln!(target, "    #[link_name = \"\\x01{}\"]", self.symbol).unwrap();
         write!(target, "    pub unsafe fn ").unwrap();
         write!(target, "{}", self.name).unwrap();
-        write!(target, "({})", self.params).unwrap();
+        write!(target, "({})", self.params.join(", ")).unwrap();
         writeln!(target, "-> {};", self.rettype).unwrap();
     }
 }
@@ -443,24 +468,42 @@ fn msvc_type_to_rust_type_name(ty: &msvc_demangler::Type<'_>) -> String {
             }
         }
         msvc_demangler::Type::Class(sym, _) | msvc_demangler::Type::Struct(sym, _) => {
-            let mut scope: Vec<_> = sym
+            let (mut bases, mut generics): (Vec<_>, Vec<_>) = sym
                 .scope
                 .names
                 .iter()
-                .flat_map(|n| name_cpp_to_rust(n, GenericsHandling::AsGeneric))
-                .collect();
-            scope.push(name_cpp_to_rust(&sym.name, GenericsHandling::AsGeneric).unwrap());
-            scope.join("_")
+                .flat_map(|n| name_cpp_to_rust_parts(n))
+                .unzip();
+            let (final_base, final_generics) = name_cpp_to_rust_parts(&sym.name).unwrap();
+            bases.push(final_base);
+            generics.push(final_generics);
+            let generics: Vec<_> = generics.into_iter().flatten().collect();
+
+            let base_name = bases.join("_");
+            if !generics.is_empty() {
+                format!("{base_name}<{}>", generics.join(", "))
+            } else {
+                base_name
+            }
         }
         msvc_demangler::Type::Union(sym, _) | msvc_demangler::Type::Enum(sym, _) => {
-            let mut scope: Vec<_> = sym
+            let (mut bases, mut generics): (Vec<_>, Vec<_>) = sym
                 .scope
                 .names
                 .iter()
-                .flat_map(|n| name_cpp_to_rust(n, GenericsHandling::AsGeneric))
-                .collect();
-            scope.push(name_cpp_to_rust(&sym.name, GenericsHandling::AsGeneric).unwrap());
-            scope.join("_")
+                .flat_map(|n| name_cpp_to_rust_parts(n))
+                .unzip();
+            let (final_base, final_generics) = name_cpp_to_rust_parts(&sym.name).unwrap();
+            bases.push(final_base);
+            generics.push(final_generics);
+            let generics: Vec<_> = generics.into_iter().flatten().collect();
+
+            let base_name = bases.join("_");
+            if !generics.is_empty() {
+                format!("{base_name}<{}>", generics.join(", "))
+            } else {
+                base_name
+            }
         }
         msvc_demangler::Type::Uchar(_) => "u8".to_string(),
         msvc_demangler::Type::Char(_) => "char".to_string(), // is mapped to i8, but kept separate to avoid collisions
@@ -502,12 +545,16 @@ fn msvc_function_decl(
     format!(
         "unsafe {} fn({}) -> {}",
         calling_conv_to_rust(cc),
-        params_to_rust(None, params, false),
+        params_to_rust(None, params, false).join(", "),
         msvc_type_to_rust_type_name(rettype)
     )
 }
 
-fn params_to_rust(this: Option<(&String, bool)>, params: &Params<'_>, param_names: bool) -> String {
+fn params_to_rust(
+    this: Option<(&String, bool)>,
+    params: &Params<'_>,
+    param_names: bool,
+) -> Vec<String> {
     let mut results = Vec::with_capacity(params.types.len() + this.is_some() as usize);
     if let Some((this, is_const)) = this {
         if is_const {
@@ -517,7 +564,7 @@ fn params_to_rust(this: Option<(&String, bool)>, params: &Params<'_>, param_name
         }
     }
     if params.types.len() == 1 && matches!(&params.types[0], &msvc_demangler::Type::Void(_)) {
-        return results.join(", ");
+        return results;
     }
     for (idx, para) in params.types.iter().enumerate() {
         if para == &msvc_demangler::Type::None {
@@ -533,7 +580,7 @@ fn params_to_rust(this: Option<(&String, bool)>, params: &Params<'_>, param_name
             results.push(msvc_type_to_rust_type_name(para));
         }
     }
-    results.join(", ")
+    results
 }
 
 fn calling_conv_to_rust(cc: &CallingConv) -> String {
@@ -572,6 +619,9 @@ impl Globals {
 
 impl Type {
     fn write_links<W: Write>(&self, name: &str, target: &mut W) {
+        if self.static_vars.is_empty() && self.methods.is_empty() {
+            return;
+        }
         let escaped_name = name.replace(['<', '>'], "_");
         writeln!(target, "pub mod {escaped_name}_link {{").unwrap();
         writeln!(target, "    #[allow(unused_imports)]").unwrap();
@@ -620,7 +670,8 @@ impl Type {
             writeln!(
                 target,
                 "        pub unsafe {callconv}fn {methodname}({}) -> {};",
-                method.params, method.rettype,
+                method.params.join(", "),
+                method.rettype,
             )
             .unwrap();
         }
@@ -630,12 +681,42 @@ impl Type {
 
     fn write_type<W: Write>(&self, name: &str, target: &mut W) {
         writeln!(target, "#[repr(C)]").unwrap();
-        writeln!(target, "pub struct {name} {{").unwrap();
-        writeln!(target, "  _opaque: [u8; 0],").unwrap();
-        writeln!(target, "}}").unwrap();
+        let generics_count = self
+            .possible_generics
+            .iter()
+            .next()
+            .map(Vec::len)
+            .unwrap_or(0);
+        if generics_count == 0 {
+            writeln!(target, "pub struct {name} {{").unwrap();
+            writeln!(target, "  _opaque: [u8; 0],").unwrap();
+            writeln!(target, "}}").unwrap();
+        } else {
+            const GEN_PARAM_NAMES: &'static str = "TUVWXYZ";
+            let gen_params: Vec<_> = (0..generics_count)
+                .into_iter()
+                .map(|i| format!("{} : 'static", GEN_PARAM_NAMES.chars().nth(i).unwrap()))
+                .collect();
+            writeln!(target, "pub struct {name}<{}> {{", gen_params.join(", ")).unwrap();
+            writeln!(target, "  _opaque: [u8; 0],").unwrap();
+            for i in 0..generics_count {
+                let gen_param = GEN_PARAM_NAMES.chars().nth(i).unwrap();
+                writeln!(
+                    target,
+                    "  _{}: PhantomData<{}>,",
+                    gen_param.to_ascii_lowercase(),
+                    gen_param
+                )
+                .unwrap();
+            }
+            writeln!(target, "}}").unwrap();
+        }
 
         for (subtype, _) in &self.subtypes {
-            writeln!(target, "pub struct {name}_{subtype} {{ }}").unwrap();
+            writeln!(target, "#[repr(C)]").unwrap();
+            writeln!(target, "pub struct {name}_{subtype} {{").unwrap();
+            writeln!(target, "  _opaque: [u8; 0],").unwrap();
+            writeln!(target, "}}").unwrap();
         }
     }
 }

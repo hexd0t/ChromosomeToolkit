@@ -1,0 +1,14 @@
+[package]
+name = "r1-script-sys"
+version = "0.1.0"
+edition = "2024"
+links = "Script"
+
+[dependencies]
+r1-sharedbase-sys = {path = "../r1-sharedbase-sys"}
+r1-engine-sys = {path = "../r1-engine-sys"}
+serde = { workspace = true }
+num_enum = { workspace = true }
+
+[build-dependencies]
+gluegen = {path = "../gluegen"}

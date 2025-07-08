@@ -69,6 +69,12 @@ fn main() {
         "eCGizmoTranslateAndScale_eCIteratorPrimitiveMoveArrow",
         "eCGizmoTranslateAndScale_eCIteratorPrimitiveMoveLine",
         "eCGizmoTranslateAndScale_eCIteratorPrimitiveScale",
+        "eCVideoPlayer",
+        "eSRayIntersectionDesc",
+        "eCRenderOp2_eSSortID",
+        "eCSubMesh_eSBuildQuadTreeNode",
+        "eSShaderMaterialIllumination",
+        "EMotionFX_ActorInstance",
     ];
     generate_glue(def_file, lib_name, manual_types, additional_opaque_types);
 }

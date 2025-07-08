@@ -452,6 +452,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 
 [[package]]
+name = "memoffset"
+version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "043175f069eda7b85febe4a74abbaeff828d9f8b448515d3151a14a3542811aa"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "miniz_oxide"
 version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -593,10 +602,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "r1-sharedbase-sys"
+name = "r1-script-sys"
 version = "0.1.0"
 dependencies = [
  "gluegen",
+ "num_enum",
+ "r1-engine-sys",
+ "r1-sharedbase-sys",
+ "serde",
+]
+
+[[package]]
+name = "r1-sharedbase-sys"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.9.1",
+ "gluegen",
+ "serde",
+ "type-layout",
+ "uuid",
  "windows",
 ]
 
@@ -816,6 +840,27 @@ dependencies = [
  "formats",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "type-layout"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "074069282ba5be5078f1bdb34112b963516d50f262bf4c1082fee1f6ada11d74"
+dependencies = [
+ "memoffset",
+ "type-layout-derive",
+]
+
+[[package]]
+name = "type-layout-derive"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc4a1cf66ce820973c4b31c5ef47a8e930a53ffbcec191212c33f5a3ad75c6cd"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
